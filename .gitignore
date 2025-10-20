@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+venv/
+*.sqlite3
+
+# Model files
+*.gguf
+*.bin
+*.pt
+*.ckpt
+*.model
+
+# Node / React
+node_modules/
+build/
+dist/
+.env.local
+.env.development
+.env.production
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
