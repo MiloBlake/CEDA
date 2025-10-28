@@ -1,3 +1,4 @@
+import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from llama_cpp import Llama
@@ -16,12 +17,18 @@ dataset = None
 def upload():
     try:
         if 'file' not in request.files:
-            return jsonify({"error": "No file part in request"}), 400
+            return jsonify({"error": "No file in request"}), 400
         
         file = request.files['file']
         
         if file.filename == '':
             return jsonify({"error": "No file selected"}), 400
+        
+        # Check file type
+        allowed_file_types = {'.csv', '.xls', '.xlsx'}
+        file_type = os.path.splitext(file.filename)[1].lower()
+        if file_type not in allowed_file_types:
+            return jsonify({'error': 'Only CSV, XLS, and XLSX files allowed'}), 400
         
         global dataset
         dataset = pd.read_csv(io.BytesIO(file.read()))
@@ -29,11 +36,14 @@ def upload():
             "message": "File uploaded", 
             "columns": list(dataset.columns)
         })
+    
+    except pd.errors.EmptyDataError:
+        return jsonify({'error': 'File is empty'}), 400
+    except pd.errors.ParserError:
+        return jsonify({'error': 'Invalid file format - please upload a valid CSV, XLS, or XLSX file'}), 400
     except Exception as e:
-        print(f"Upload error: {str(e)}")  # This will show in terminal
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(f"Upload error: {str(e)}")
+        return jsonify({'error': 'Failed to process file'}), 500
 
 # QUERY
 @app.route("/query", methods=["POST"])
