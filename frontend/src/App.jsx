@@ -1,25 +1,22 @@
 import { useState } from "react";
 import ChatBox from "./components/ChatBox";
-import FileUpload from "./components/FileUpload";
+import FileUploader from "./components/FileUpload";
 
 function App() {
-  const [columns, setColumns] = useState([]);
+  const [datasetUploaded, setDatasetUploaded] = useState(false);
 
-  const handleFileUploaded = (metadata) => {
-    setColumns(metadata.columns);
+  const handleFileUploaded = (data) => {
+    setDatasetUploaded(true);
+    alert("File uploaded successfully!");
   };
 
   return (
-    <div style={{ fontFamily: "sans-serif", padding: 20 }}>
-      <h1>Data Analysis Chatbot</h1>
-      <FileUpload onFileUploaded={handleFileUploaded} />
-      {columns.length > 0 && (
-        <p>
-          Uploaded dataset
-          {columns.join(", ")}
-        </p>
+    <div style={{ padding: 20, maxWidth: 800, margin: "0 auto" }}>
+      {!datasetUploaded ? (
+        <FileUploader onFileUploaded={handleFileUploaded} />
+      ) : (
+        <ChatBox />
       )}
-      <ChatBox />
     </div>
   );
 }
