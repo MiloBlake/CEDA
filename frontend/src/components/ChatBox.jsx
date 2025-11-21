@@ -5,14 +5,22 @@ export default function ChatBox() {
   const [input, setInput] = useState("");
 
   const send = async () => {
-    const res = await fetch("http://localhost:5000/query", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: input }),
-    });
-    const data = await res.json();
-    setMessages([...messages, { user: input, bot: data.response }]);
-    setInput("");
+    if (!input.trim()) return;
+    
+    try {
+      const res = await fetch("http://localhost:5000/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: input }),
+      });
+      const data = await res.json();
+      const botResponse = data.result !== undefined ? data.result : JSON.stringify(data);
+      setMessages([...messages, { user: input, bot: botResponse }]);
+      setInput("");
+    } catch (err) {
+      setMessages([...messages, { user: input, bot: `Error: ${err.message}` }]);
+      setInput("");
+    }
   };
 
   return (
@@ -29,6 +37,7 @@ export default function ChatBox() {
       <input
         value={input}
         onChange={(e) => setInput(e.target.value)}
+        onKeyPress={(e) => e.key === "Enter" && send()}
         placeholder="Ask a question..."
       />
       <button onClick={send}>Send</button>
