@@ -16,7 +16,7 @@ llm = None
 app = Flask(__name__)
 CORS(app)
 
-# resolve model path relative to this file
+# resolve model path 
 MODEL_NAME = "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "llm", MODEL_NAME)
 
@@ -51,7 +51,7 @@ def upload():
             "columns": list(dataset.columns)
         })
     except Exception as e:
-        print(f"Upload error: {str(e)}")  # This will show in terminal
+        print(f"Upload error: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
@@ -66,6 +66,7 @@ def query():
     col = next((c for c in cols if c.lower() in q.lower()), None)
     intent = detect_intent(q)
 
+    # Attemtpt direct nlp handling first
     if intent == "avg" and col:
         return jsonify({"result": float(pd.to_numeric(dataset[col], errors="coerce").mean())})
     if intent == "sum" and col:
@@ -76,12 +77,17 @@ def query():
         return jsonify({"result": float(pd.to_numeric(dataset[col], errors="coerce").min())})
     if intent == "count":
         return jsonify({"result": int(len(dataset))})
+    if intent == "list" and col:
+        return jsonify({"values": dataset[col].head(50).tolist()})
 
+    # Use LLM to attempt to parse complex queries
     if llm:
         prompt = (
+            "You are a data analysis assistant.\n"
+            "Your task is to reformulate the user's query so that an nlp can understand it.\n"
             "Rewrite the user's analytics query into single line JSON ONLY.\n"
             f"Columns: {', '.join(cols)}\n"
-            'Schema: {"operation":"avg|sum|max|min|count","column":"<column name or null>"}\n'
+            'Schema: {"operation":"avg|sum|max|min|count|list","column":"<column name or null>"}\n'
             'Example 1: {"operation":"avg","column":"Age"}\n'
             'Example 2: {"operation":"count","column":null}\n'
             f"User: {q}\n"
@@ -97,6 +103,8 @@ def query():
 
             if op == "count":
                 return jsonify({"result": int(len(dataset))})
+            if op == "list" and col in cols:
+                return jsonify({"values": dataset[col].head(50).tolist()})
             if col in cols:
                 s = pd.to_numeric(dataset[col], errors="coerce")
                 if op == "avg":  return jsonify({"result": float(s.mean())})
