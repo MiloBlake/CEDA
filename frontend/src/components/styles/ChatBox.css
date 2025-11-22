@@ -1,0 +1,163 @@
+.chatbox-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  max-width: 90%;
+  width: 100%;
+  margin: 0 auto;
+  background: white;
+}
+.messages-area {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  background-color: #f8f9fa;
+  display: flex;
+  flex-direction: column;
+}
+
+.welcome-message {
+  text-align: center;
+  color: #666;
+  margin-top: 50px;
+}
+
+.welcome-icon {
+  font-size: 32px;
+  margin-bottom: 10px;
+}
+
+.message-group {
+  margin-bottom: 20px;
+}
+
+.user-message-container {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.user-message {
+  background-color: #a80050;
+  color: white;
+  padding: 10px 15px;
+  border-radius: 18px 18px 4px 18px;
+  max-width: 70%;
+  word-break: break-word;
+}
+
+.bot-message-container {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.bot-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: #e3f2fd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px;
+  font-size: 16px;
+}
+
+.bot-message {
+  background-color: white;
+  padding: 10px 15px;
+  border-radius: 4px 18px 18px 18px;
+  max-width: 70%;
+  word-break: break-word;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.typing-indicator {
+  display: flex;
+  gap: 3px;
+}
+
+.typing-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #ccc;
+  animation: typing 1.4s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+.input-area {
+  margin-top: auto;
+  padding: 20px;
+  background-color: white;
+  border-top: 1px solid #e0e0e0;
+}
+
+.input-container {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.message-input {
+  flex: 1;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 25px;
+  font-size: 16px;
+  outline: none;
+  background-color: #f8f9fa;
+}
+
+.send-button {
+  border: none;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.send-button:enabled {
+  background-color: #a80050;
+}
+
+.send-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+@keyframes typing {
+  0%, 60%, 100% { 
+    transform: scale(1); 
+    opacity: 0.5; 
+  }
+  30% { 
+    transform: scale(1.2); 
+    opacity: 1; 
+  }
+}
+
+@media (min-width: 768px) {
+  .chatbox-container {
+    max-width: 1000px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .chatbox-container {
+    max-width: 1200px;
+  }
+}

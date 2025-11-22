@@ -1,4 +1,5 @@
 import axios from "axios";
+import "./styles/FileUpload.css";
 
 export default function FileUploader({ onFileUploaded }) {
   const uploadFile = async (e) => {
@@ -13,8 +14,19 @@ export default function FileUploader({ onFileUploaded }) {
   };
 
   return (
-    <div>
-      <input type="file" onChange={uploadFile} />
+    <div className="file-uploader">
+      <label className="upload-button">
+        Upload CSV
+        <input
+          type="file"
+          accept=".csv"
+          onChange={uploadFile}
+          className="hidden-input"
+        />
+      </label>
+      <span className="upload-text">
+        Upload your dataset to get started!
+      </span>
     </div>
   );
 }
