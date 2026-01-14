@@ -1,4 +1,6 @@
 import { useState } from "react";
+import Plot from 'react-plotly.js';
+
 import "./styles/ChatBox.css";
 
 export default function ChatBox() {
@@ -21,8 +23,17 @@ export default function ChatBox() {
       const data = await res.json();
       
       let botResponse;
-      if (data.result !== undefined) botResponse = `${data.result}`;
+
+      if (data.chart) {
+        botResponse = {
+          type: "chart",
+          chart: JSON.parse(data.chart),
+          message: data.message || "Here's your chart:"
+        };
+      }
+      else if (data.result !== undefined) botResponse = `${data.result}`;
       else if (data.values) botResponse = `Values: ${data.values.join(", ")}`;
+      else if (data.response) botResponse = data.response;
       else botResponse = JSON.stringify(data);
       
       setMessages(prev => 
@@ -37,6 +48,13 @@ export default function ChatBox() {
         )
       );
     }
+  };
+
+  const renderMessage = (message) => {
+    if (typeof message === "object" && message.type === "chart") {
+      return <Plot data={message.chart.data} layout={message.chart.layout} />;
+    }
+    return <div>{message}</div>;
   };
 
   return (
@@ -64,7 +82,9 @@ export default function ChatBox() {
               <div className="bot-avatar">💭</div>
               
               {m.bot ? (
-                <div className="bot-message">{m.bot}</div>
+                <div className="bot-message">
+                  {renderMessage(m.bot)}
+                </div>
               ) : (
                 <div className="bot-message">
                   <div className="typing-indicator">
