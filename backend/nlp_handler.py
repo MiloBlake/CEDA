@@ -8,6 +8,13 @@ MIN_KEYWORDS = ["min", "minimum", "lowest", "smallest", "least"]
 COUNT_KEYWORDS = ["count", "how many", "number of"]
 LIST_KEYWORDS = ["show", "list", "return", "give"]
 
+CHART_KEYWORDS = {
+    "bar": ["bar chart", "bar graph", "histogram"],
+    "line": ["line chart", "line graph"],
+    "scatter": ["scatter plot", "scatter graph"],
+    "pie": ["pie chart", "pie graph"],
+}
+
 def _fuzzy_has(tokens, keywords, thresh=0.80):
     for t in tokens:
         for k in keywords:
@@ -27,5 +34,6 @@ def detect_intent(query: str) -> str:
     if _fuzzy_has(tokens, MIN_KEYWORDS): return "min"
     if _fuzzy_has(tokens, COUNT_KEYWORDS): return "count"
     if _fuzzy_has(tokens, LIST_KEYWORDS): return "list"
+    if _fuzzy_has(tokens, CHART_KEYWORDS): return "chart"
     if any(w in q for w in ["summary", "describe", "stats", "overview"]): return "stat_summary"
     return "unknown"

@@ -9,6 +9,7 @@ import pandas as pd
 import io
 
 from nlp_handler import detect_intent
+from graphs import ChartGenerator, get_chart_suggestions
 
 dataset = None
 llm = None
@@ -80,6 +81,31 @@ def query():
     if intent == "list" and col:
         return jsonify({"values": dataset[col].head(50).tolist()})
 
+    # Chart generation
+    if intent == "chart":
+        suggestion = get_chart_suggestions(dataset, q)
+        if suggestion:
+            try:
+                chart_gen = ChartGenerator(dataset)
+                
+                if suggestion["type"] == "scatter":
+                    fig = chart_gen.create_scatter(suggestion["x"], suggestion.get("y"))
+                elif suggestion["type"] == "histogram":
+                    fig = chart_gen.create_histogram(suggestion["x"])
+                elif suggestion["type"] == "box":
+                    fig = chart_gen.create_box_plot(suggestion["x"], suggestion.get("group"))
+                elif suggestion["type"] == "bar":
+                    fig = chart_gen.create_bar_chart(suggestion["x"])
+                
+                return jsonify({
+                    "chart": fig.to_json(),  # Change from chart_suggestion to chart
+                    "message": f"Here's a {suggestion['type']} chart:"
+                })
+            except Exception as e:
+                return jsonify({"response": f"Could not generate chart: {str(e)}"})
+        else:
+            return jsonify({"response": "I can create charts, but I need more specific information."})
+
     # Use LLM to attempt to parse complex queries
     if llm:
         prompt = (
@@ -92,29 +118,73 @@ def query():
             'Example 2: {"operation":"count","column":null}\n'
             f"User: {q}\n"
         )
-        resp = llm(prompt, max_tokens=64, temperature=0.0, top_p=1.0)
-        text = resp["choices"][0].get("text", "").strip()
 
-        m = re.search(r"\{.*\}", text, re.S)
-        if m:
-            parsed = json.loads(m.group())
-            op = parsed.get("operation")
-            col = parsed.get("column")
+        try:
+            resp = llm(prompt, max_tokens=64, temperature=0.0, top_p=1.0)
+            text = resp["choices"][0].get("text", "").strip()
+            
+            # Remove any non-JSON content before JSON response
+            text = text.replace("JSON response: ", "").strip()
 
-            if op == "count":
-                return jsonify({"result": int(len(dataset))})
-            if op == "list" and col in cols:
-                return jsonify({"values": dataset[col].head(50).tolist()})
-            if col in cols:
-                s = pd.to_numeric(dataset[col], errors="coerce")
-                if op == "avg":  return jsonify({"result": float(s.mean())})
-                if op == "sum":  return jsonify({"result": float(s.sum())})
-                if op == "max":  return jsonify({"result": float(s.max())})
-                if op == "min":  return jsonify({"result": float(s.min())})
+            text_json = re.search(r'\{[^{}]*\}', text)
+            if text_json:
+                parsed = json.loads(text_json.group())
+                op = parsed.get("operation")
+                col = parsed.get("column")
 
-        return jsonify({"response": text})
+                if op == "count":
+                    return jsonify({"result": int(len(dataset))})
+                if op == "list" and col in cols:
+                    return jsonify({"values": dataset[col].head(50).tolist()})
+                if col in cols:
+                    s = pd.to_numeric(dataset[col], errors="coerce")
+                    if op == "avg":  return jsonify({"result": float(s.mean())})
+                    if op == "sum":  return jsonify({"result": float(s.sum())})
+                    if op == "max":  return jsonify({"result": float(s.max())})
+                    if op == "min":  return jsonify({"result": float(s.min())})
+
+            return jsonify({"response": text})
+        except Exception as e:
+            return jsonify({"response": f"Error processing query: {str(e)}"})
 
     return jsonify({"response": "Could not understand"})
+
+@app.route("/chart", methods=["POST"])
+def generate_chart():
+    global dataset
+    if dataset is None:
+        return jsonify({"error": "No dataset loaded"}), 400
+    
+    data = request.json
+    chart_type = data.get("type", "scatter")
+    x_col = data.get("x_column")
+    y_col = data.get("y_column")
+    color_col = data.get("color_column")
+    group_col = data.get("group_column")
+    
+    try:
+        chart_gen = ChartGenerator(dataset)
+        
+        if chart_type == "scatter":
+            fig = chart_gen.create_scatter(x_col, y_col, color_col)
+        elif chart_type == "histogram":
+            fig = chart_gen.create_histogram(x_col, color_col)
+        elif chart_type == "box":
+            fig = chart_gen.create_box_plot(x_col, group_col)
+        elif chart_type == "bar":
+            fig = chart_gen.create_bar_chart(x_col, y_col)
+        else:
+            return jsonify({"error": "Unsupported chart type"}), 400
+        
+        return jsonify({
+            "chart": fig.to_json(),
+            "columns": list(dataset.columns),
+            "numeric_columns": dataset.select_dtypes(include=['number']).columns.tolist(),
+            "categorical_columns": dataset.select_dtypes(include=['object', 'category']).columns.tolist()
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 # HEALTH CHECK
 @app.route("/health", methods=["GET"])
