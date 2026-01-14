@@ -69,13 +69,13 @@ def query():
 
     # Attemtpt direct nlp handling first
     if intent == "avg" and col:
-        return jsonify({"result": float(pd.to_numeric(dataset[col], errors="coerce").mean())})
+        return jsonify({"result": round(float(pd.to_numeric(dataset[col], errors="coerce").mean()), 2)})
     if intent == "sum" and col:
-        return jsonify({"result": float(pd.to_numeric(dataset[col], errors="coerce").sum())})
+        return jsonify({"result": round(float(pd.to_numeric(dataset[col], errors="coerce").sum()), 2)})
     if intent == "max" and col:
-        return jsonify({"result": float(pd.to_numeric(dataset[col], errors="coerce").max())})
+        return jsonify({"result": round(float(pd.to_numeric(dataset[col], errors="coerce").max()), 2)})
     if intent == "min" and col:
-        return jsonify({"result": float(pd.to_numeric(dataset[col], errors="coerce").min())})
+        return jsonify({"result": round(float(pd.to_numeric(dataset[col], errors="coerce").min()), 2)})
     if intent == "count":
         return jsonify({"result": int(len(dataset))})
     if intent == "list" and col:
@@ -138,10 +138,10 @@ def query():
                     return jsonify({"values": dataset[col].head(50).tolist()})
                 if col in cols:
                     s = pd.to_numeric(dataset[col], errors="coerce")
-                    if op == "avg":  return jsonify({"result": float(s.mean())})
-                    if op == "sum":  return jsonify({"result": float(s.sum())})
-                    if op == "max":  return jsonify({"result": float(s.max())})
-                    if op == "min":  return jsonify({"result": float(s.min())})
+                    if op == "avg":  return jsonify({"result": round(float(s.mean()), 2)})
+                    if op == "sum":  return jsonify({"result": round(float(s.sum()), 2)})
+                    if op == "max":  return jsonify({"result": round(float(s.max()), 2)})
+                    if op == "min":  return jsonify({"result": round(float(s.min()), 2)})
 
             return jsonify({"response": text})
         except Exception as e:
