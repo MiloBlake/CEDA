@@ -28,6 +28,10 @@
   font-size: 14px;
 }
 
+.hidden-input {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .file-uploader {
     bottom: 15px;

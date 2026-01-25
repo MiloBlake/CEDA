@@ -8,7 +8,16 @@ from llama_cpp import Llama
 import pandas as pd
 import io
 
-from nlp_handler import detect_intent
+from nlp_handler import parse_query
+from graphs import render_chart
+
+# Setup logging
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
+logger = logging.getLogger("backend")
 
 dataset = None
 llm = None
@@ -16,7 +25,7 @@ llm = None
 app = Flask(__name__)
 CORS(app)
 
-# resolve model path 
+# Resolve model path 
 MODEL_NAME = "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "llm", MODEL_NAME)
 
@@ -25,14 +34,14 @@ if os.path.exists(MODEL_PATH):
     try:
         llm = Llama(model_path=MODEL_PATH)
     except Exception as e:
-        logging.exception("Failed to load Llama model")
+        logger.exception("Model loading error")
         llm = None
 else:
-    logging.warning("LLM model not found at %s", MODEL_PATH)
+    logger.exception("Model file not found")
 
 dataset = None
 
-# UPLOAD DATASET
+# UPLOAD DATASET - store DataFrame in memory
 @app.route("/upload", methods=["POST"])
 def upload():
     try:
@@ -61,59 +70,45 @@ def upload():
 def query():
     global dataset, llm
     q = (request.json or {}).get("query", "")
+    if dataset is None:
+        return jsonify({"response": "No dataset uploaded."}), 400
     cols = list(dataset.columns)
 
-    col = next((c for c in cols if c.lower() in q.lower()), None)
-    intent = detect_intent(q)
-
-    # Attemtpt direct nlp handling first
-    if intent == "avg" and col:
-        return jsonify({"result": float(pd.to_numeric(dataset[col], errors="coerce").mean())})
-    if intent == "sum" and col:
-        return jsonify({"result": float(pd.to_numeric(dataset[col], errors="coerce").sum())})
-    if intent == "max" and col:
-        return jsonify({"result": float(pd.to_numeric(dataset[col], errors="coerce").max())})
-    if intent == "min" and col:
-        return jsonify({"result": float(pd.to_numeric(dataset[col], errors="coerce").min())})
-    if intent == "count":
+    spec = parse_query(q, cols, llm=llm)
+    if not spec:
+        return jsonify({"response": "Could not understand the query."})
+    
+    operation = spec.get("operation")
+    col = spec.get("col")
+    
+    # Attempt direct nlp handling first
+    if operation == "avg" and col:
+        return jsonify({"result": round(float(pd.to_numeric(dataset[col], errors="coerce").mean()), 2)})
+    if operation == "sum" and col:
+        return jsonify({"result": round(float(pd.to_numeric(dataset[col], errors="coerce").sum()), 2)})
+    if operation == "max" and col:
+        return jsonify({"result": round(float(pd.to_numeric(dataset[col], errors="coerce").max()), 2)})
+    if operation == "min" and col:
+        return jsonify({"result": round(float(pd.to_numeric(dataset[col], errors="coerce").min()), 2)})
+    if operation == "count":
         return jsonify({"result": int(len(dataset))})
-    if intent == "list" and col:
+    if operation == "list" and col:
         return jsonify({"values": dataset[col].head(50).tolist()})
 
-    # Use LLM to attempt to parse complex queries
-    if llm:
-        prompt = (
-            "You are a data analysis assistant.\n"
-            "Your task is to reformulate the user's query so that an nlp can understand it.\n"
-            "Rewrite the user's analytics query into single line JSON ONLY.\n"
-            f"Columns: {', '.join(cols)}\n"
-            'Schema: {"operation":"avg|sum|max|min|count|list","column":"<column name or null>"}\n'
-            'Example 1: {"operation":"avg","column":"Age"}\n'
-            'Example 2: {"operation":"count","column":null}\n'
-            f"User: {q}\n"
-        )
-        resp = llm(prompt, max_tokens=64, temperature=0.0, top_p=1.0)
-        text = resp["choices"][0].get("text", "").strip()
+    # Chart generation
+    if operation == "chart":
+        chart_spec = spec.get("chart", {})
 
-        m = re.search(r"\{.*\}", text, re.S)
-        if m:
-            parsed = json.loads(m.group())
-            op = parsed.get("operation")
-            col = parsed.get("column")
-
-            if op == "count":
-                return jsonify({"result": int(len(dataset))})
-            if op == "list" and col in cols:
-                return jsonify({"values": dataset[col].head(50).tolist()})
-            if col in cols:
-                s = pd.to_numeric(dataset[col], errors="coerce")
-                if op == "avg":  return jsonify({"result": float(s.mean())})
-                if op == "sum":  return jsonify({"result": float(s.sum())})
-                if op == "max":  return jsonify({"result": float(s.max())})
-                if op == "min":  return jsonify({"result": float(s.min())})
-
-        return jsonify({"response": text})
-
+        if not chart_spec:
+            return jsonify({"response": "I can create charts, but I need more specific information."})
+                
+        try:
+            logger.info(f"Generating chart with spec: {chart_spec}")
+            chart = render_chart(dataset, chart_spec)
+            return jsonify({"chart": chart.to_json(), "message": "Chart generated successfully."})
+        except Exception as e:
+            return jsonify({"response": f"Error generating chart: {str(e)}"})
+        
     return jsonify({"response": "Could not understand"})
 
 # HEALTH CHECK
