@@ -33,9 +33,10 @@ class ChartGenerator:
             y=y_col,
             color=color_col if color_col and color_col in plot_data.columns else None,
             title=f"{y_col} vs {x_col}",
-            hover_data=[col for col in plot_data.columns[:3] if col not in [x_col, y_col]]
+            hover_data=(["_row_id"] + [col for col in plot_data.columns[:3] if col not in [x_col, y_col, "_row_id"]])
         )
-        
+        # Add row identifiers
+        fig.update_traces(customdata=plot_data[["_row_id"]].to_numpy())
         return self._style_chart(fig, title=f"{y_col} vs {x_col}", kind="scatter")
     
     def create_histogram(self, x_col, color_col=None):
