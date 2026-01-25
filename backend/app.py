@@ -29,17 +29,13 @@ CORS(app)
 MODEL_NAME = "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "llm", MODEL_NAME)
 
-llm = None
 if os.path.exists(MODEL_PATH):
     try:
         llm = Llama(model_path=MODEL_PATH)
     except Exception as e:
-        logger.exception("Model loading error")
-        llm = None
+        logger.warning("Model file not found at %s", MODEL_PATH)
 else:
-    logger.exception("Model file not found")
-
-dataset = None
+    logger.exception("Model loading error")
 
 # UPLOAD DATASET - store DataFrame in memory
 @app.route("/upload", methods=["POST"])
