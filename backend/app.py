@@ -78,11 +78,25 @@ def query():
     selected_ids = (request.json or {}).get("selected_row_ids") or []
     selected_dataset = dataset
 
-    logger.info("selected_row_ids=%s", selected_ids[:20])
-    logger.info("dataset rows=%d | selected rows=%d", len(dataset), len(selected_dataset))
+    selected_category = (request.json or {}).get("selected_category")
+    if selected_category and selected_category.get("col"):
+        col_name = selected_category["col"]
+        if col_name in selected_dataset.columns:
+            values = selected_category.get("values")
+            if values:
+                selected_dataset = selected_dataset[selected_dataset[col_name].astype(str).isin([str(v) for v in values])]
+            else:
+                # single value
+                val = selected_category.get("value")
+                if val is not None:
+                    selected_dataset = selected_dataset[selected_dataset[col_name].astype(str) == str(val)]
 
     if selected_ids:
-        selected_dataset = dataset[dataset["_row_id"].isin(selected_ids)]
+        selected_dataset = selected_dataset[selected_dataset["_row_id"].isin(selected_ids)]
+
+    logger.info("selected_row_ids=%s", selected_ids[:20])
+    logger.info("selected_category=%s", selected_category)
+    logger.info("dataset rows=%d | selected rows=%d", len(dataset), len(selected_dataset))
 
     spec = parse_query(q, cols, llm=llm)
     if not spec:
