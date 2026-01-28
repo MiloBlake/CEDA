@@ -1,5 +1,5 @@
 import { useState } from "react";
-import Plot from 'react-plotly.js';
+import Plot from "react-plotly.js";
 import "./styles/ChatBox.css";
 
 export default function ChatBox() {
@@ -10,14 +10,11 @@ export default function ChatBox() {
 
   const send = async () => {
     if (!input.trim()) return;
-    
+
     const userMessage = input.trim();
     if (!userMessage) return;
     setInput("");
-    setMessages(prev => [
-      ...prev,
-      { user: userMessage, bot: "__typing__" }
-    ]);
+    setMessages((prev) => [...prev, { user: userMessage, bot: "__typing__" }]);
 
     console.log("Sending query:", userMessage);
     console.log("Selected row IDs:", selectedRowIds);
@@ -26,38 +23,41 @@ export default function ChatBox() {
       const res = await fetch("http://localhost:5000/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: userMessage, selected_row_ids: selectedRowIds, selected_category: selectedCategory }),
+        body: JSON.stringify({
+          query: userMessage,
+          selected_row_ids: selectedRowIds,
+          selected_category: selectedCategory,
+        }),
       });
       const data = await res.json();
-      
+
       let botResponse;
 
       if (data.chart) {
         botResponse = {
           type: "chart",
           chart: JSON.parse(data.chart),
-          message: data.message || "Here's your chart:"
+          message: data.message || "Here's your chart:",
         };
-      }
-      else if (data.result !== undefined) botResponse = `${data.result}`;
+      } else if (data.result !== undefined) botResponse = `${data.result}`;
       else if (data.values) botResponse = `Values: ${data.values.join(", ")}`;
       else if (data.response) botResponse = data.response;
       else botResponse = JSON.stringify(data);
 
-      setMessages(prev => {
+      setMessages((prev) => {
         // Replace the last "__typing__" message with the bot response
         const updated = prev.map((m, idx) =>
-        idx === prev.length - 1 && m.bot === "__typing__"
-          ? { ...m, bot: botResponse }   
-          : m
+          idx === prev.length - 1 && m.bot === "__typing__"
+            ? { ...m, bot: botResponse }
+            : m,
         );
         return updated;
       });
     } catch (err) {
-      setMessages(prev => 
-        prev.map((m, i) => 
-          i === prev.length - 1 ? { ...m, bot: `Error: ${err.message}` } : m
-        )
+      setMessages((prev) =>
+        prev.map((m, i) =>
+          i === prev.length - 1 ? { ...m, bot: `Error: ${err.message}` } : m,
+        ),
       );
     }
     setSelectedRowIds([]); // Clear selection after each query
@@ -146,7 +146,11 @@ export default function ChatBox() {
 
       let data = message.chart.data;
       if (!isScatter) {
-        data = applyCategorySelection(message.chart.data, message.chart.layout, selectedCategory);
+        data = applyCategorySelection(
+          message.chart.data,
+          message.chart.layout,
+          selectedCategory,
+        );
       }
 
       const layout = {
@@ -161,77 +165,77 @@ export default function ChatBox() {
       layout.dragmode = isScatter ? "select" : false;
       layout.clickmode = isScatter ? "event" : "event";
 
-      return ( 
+      return (
         <div>
-            <Plot
-              key={`chart-${i}-${message.chart?.layout?.title?.text || "untitled"}`}
-              data={data}
-              layout={layout}
-              config={{ responsive: true, displaylogo: false }}
-              style={{ width: "100%", height: "650px" }}
+          <Plot
+            key={`chart-${i}-${message.chart?.layout?.title?.text || "untitled"}`}
+            data={data}
+            layout={layout}
+            config={{ responsive: true, displaylogo: false }}
+            style={{ width: "100%", height: "650px" }}
+            onInitialized={(fig, graphDiv) => {
+              // Remove any previous handler
+              if (graphDiv.removeListener)
+                graphDiv.removeAllListeners("plotly_click");
 
-              onInitialized={(fig, graphDiv) => {
-                // Remove any previous handler 
-                if (graphDiv.removeListener) graphDiv.removeAllListeners("plotly_click");
+              graphDiv.on("plotly_click", (ev) => {
+                const pt = ev?.points?.[0];
+                if (!pt) return;
 
-                graphDiv.on("plotly_click", (ev) => {
-                  const pt = ev?.points?.[0];
-                  if (!pt) return;
+                const isBarLocal = pt?.data?.type === "bar";
+                const isPieLocal = pt?.data?.type === "pie";
+                if (!isBarLocal && !isPieLocal) return;
 
-                  const isBarLocal = pt?.data?.type === "bar";
-                  const isPieLocal = pt?.data?.type === "pie";
-                  if (!isBarLocal && !isPieLocal) return;
-                  
-                  let value = null;
-                  let col = null;
-                  
-                  if (isBarLocal) {
-                    value = String(pt.x);
-                    col = fig?.layout?.xaxis?.title?.text ||
+                let value = null;
+                let col = null;
+
+                if (isBarLocal) {
+                  value = String(pt.x);
+                  col =
+                    fig?.layout?.xaxis?.title?.text ||
                     fig?.layout?.xaxis?.title;
+                } else if (isPieLocal) {
+                  value = String(pt.label);
+                  col = pt?.data?.meta?.col;
+                }
+
+                if (col == null || value == null) return;
+
+                setSelectedCategory((prev) => {
+                  if (!prev || prev.col !== col)
+                    return { col: col, values: [value] };
+
+                  const has = prev.values.includes(value);
+
+                  // Remove selected value or add unselected value
+                  if (has) {
+                    const next = prev.values.filter((v) => v !== value);
+                    console.log("Bar deselected:", col, value);
+                    return next.length ? { col, values: next } : null;
+                  } else {
+                    console.log("Bar selected:", col, value);
+                    return { col, values: [...prev.values, value] };
                   }
-                  else if (isPieLocal) {
-                    value = String(pt.label);
-                    col = pt?.data?.meta?.col;
-                  }
-                    
-                  if (col == null || value == null) return;
-
-                  setSelectedCategory((prev) => {
-                    if (!prev || prev.col !== col) return { col: col, values: [value] };
-
-                    const has = prev.values.includes(value);
-
-                    // Remove selected value or add unselected value
-                    if (has) {
-                      const next = prev.values.filter((v) => v !== value);
-                      console.log("Bar deselected:", col, value);
-                      return next.length ? { col, values: next } : null;
-                    } else {
-                      console.log("Bar selected:", col, value);
-                      return { col, values: [...prev.values, value] };
-                    }
-                  });
                 });
-              }}
-              
-              // For scatter charts
-              onSelected={(e) => {
-                const pts = e?.points || [];
-                const ids = pts.map((p) => p.customdata?.[0]).filter((v) => v != null);
-                if (!ids.length) return;
-                setSelectedRowIds([...new Set(ids)]);
-              }}
-
-              onDeselect={() => {
-                setSelectedRowIds([]);
-              }}
-            />
-
+              });
+            }}
+            // For scatter charts
+            onSelected={(e) => {
+              const pts = e?.points || [];
+              const ids = pts
+                .map((p) => p.customdata?.[0])
+                .filter((v) => v != null);
+              if (!ids.length) return;
+              setSelectedRowIds([...new Set(ids)]);
+            }}
+            onDeselect={() => {
+              setSelectedRowIds([]);
+            }}
+          />
         </div>
       );
     }
-    
+
     return <div>{message}</div>;
   };
 
@@ -249,17 +253,16 @@ export default function ChatBox() {
         {messages.map((m, i) => (
           <div key={i} className="message-group">
             {/* User Message */}
-              {m.user && (
-                <div className="user-message-container">
-                  <div className="user-message">{m.user}</div>
-                </div>
-              )}
-
+            {m.user && (
+              <div className="user-message-container">
+                <div className="user-message">{m.user}</div>
+              </div>
+            )}
 
             {/* Bot Message or Typing */}
             <div className="bot-message-container">
               <div className="bot-avatar">💭</div>
-              
+
               {m.bot === "__typing__" && (
                 <div className="bot-message">
                   <div className="typing-indicator">
@@ -271,7 +274,9 @@ export default function ChatBox() {
               )}
 
               {m.bot && m.bot !== "__typing__" && (
-                <div className={`bot-message ${m.bot?.type === "chart" ? "chart-message" : ""}`}>
+                <div
+                  className={`bot-message ${m.bot?.type === "chart" ? "chart-message" : ""}`}
+                >
                   {renderMessage(m.bot, i)}
                 </div>
               )}
