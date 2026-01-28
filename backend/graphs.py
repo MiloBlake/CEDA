@@ -166,7 +166,7 @@ class ChartGenerator:
                 values=counts.values,
                 title=f"Pie Chart of {names_col} (Top 10)" # Only display top 10 for aesthetics
             )
-        
+        fig.update_traces(meta={"col": names_col})
         return self._style_chart(fig, title=f"Distribution of {names_col}", rotate_x=False, kind="pie")
     
     def create_line_chart(self, x_col, y_col, color_col=None):

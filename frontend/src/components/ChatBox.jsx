@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import Plot from 'react-plotly.js';
 import "./styles/ChatBox.css";
 
@@ -60,29 +60,106 @@ export default function ChatBox() {
         )
       );
     }
-    //setSelectedRowIds([]); // Clear selection after each query
+    setSelectedRowIds([]); // Clear selection after each query
+    setSelectedCategory(null); // Clear category selection after each query
   };
+
+  function applyCategorySelection(traces, layout, selectedCategory) {
+    // Apply category selection to bar and pie charts by adjusting opacity and outlines
+
+    const hasSelection =
+      !!selectedCategory?.col &&
+      Array.isArray(selectedCategory?.values) &&
+      selectedCategory.values.length > 0;
+
+    const selectedSet = hasSelection
+      ? new Set(selectedCategory.values.map(String))
+      : new Set();
+
+    const xCol = layout?.xaxis?.title?.text || layout?.xaxis?.title || null;
+
+    return traces.map((tr) => {
+      const type = tr?.type;
+
+      // Bar chart
+      if (type === "bar") {
+        const xs = (tr.x || []).map(String);
+
+        // Check if default selection applies
+        const defaultSelectionApplies =
+          hasSelection && xCol && selectedCategory?.col === xCol;
+
+        return {
+          ...tr,
+          marker: {
+            ...(tr.marker || {}),
+            // dim only when selection applies
+            opacity: defaultSelectionApplies
+              ? xs.map((x) => (selectedSet.has(x) ? 1 : 0.25))
+              : 1,
+
+            // border stronger on selected bars
+            line: {
+              color: defaultSelectionApplies
+                ? xs.map((x) =>
+                    selectedSet.has(x) ? "#111" : "rgba(0,0,0,0.4)",
+                  )
+                : "rgba(0,0,0,0.3)",
+              width: defaultSelectionApplies
+                ? xs.map((x) => (selectedSet.has(x) ? 2 : 2))
+                : 1.5,
+            },
+          },
+        };
+      }
+
+      // Pie chart
+      if (type === "pie") {
+        const pieCol = tr?.meta?.col || null;
+        if (!pieCol || selectedCategory?.col !== pieCol) return tr;
+
+        const labels = (tr.labels || []).map(String);
+
+        return {
+          ...tr,
+          pull: labels.map((l) => (selectedSet.has(l) ? 0.15 : 0)),
+          marker: {
+            ...(tr.marker || {}),
+            opacity: labels.map((l) => (selectedSet.has(l) ? 1 : 0.35)),
+            line: {
+              color: labels.map((l) =>
+                selectedSet.has(l) ? "#111" : "rgba(0,0,0,0)",
+              ),
+              width: labels.map((l) => (selectedSet.has(l) ? 2 : 0)),
+            },
+          },
+        };
+      }
+      // Other chart type
+      return tr;
+    });
+  }
 
   const renderMessage = (message, i) => {
     if (typeof message === "object" && message.type === "chart") {
-      const isBar = message.chart?.data?.[0]?.type === "bar";
-      const data = isBar
-        ? message.chart.data.map(tr => ({
-            ...tr,
-            selected: { marker: { opacity: 1 } },
-            unselected: { marker: { opacity: 1 } },
-          }))
-        : message.chart.data;
+      const isScatter = message.chart?.data?.[0]?.type === "scatter";
+
+      let data = message.chart.data;
+      if (!isScatter) {
+        data = applyCategorySelection(message.chart.data, message.chart.layout, selectedCategory);
+      }
 
       const layout = {
         ...message.chart.layout,
         autosize: true,
       };
+
       delete layout.width;
       delete layout.height;
-      // Disable dragmode selection for certain charts
-      layout.dragmode = isBar ? false : "select";
-      layout.clickmode = isBar ? "event+select" : "event";
+
+      // interaction type
+      layout.dragmode = isScatter ? "select" : false;
+      layout.clickmode = isScatter ? "event" : "event";
 
       return ( 
         <div>
@@ -102,36 +179,39 @@ export default function ChatBox() {
                   if (!pt) return;
 
                   const isBarLocal = pt?.data?.type === "bar";
-                  if (!isBarLocal) return;
-
-                  const xVal = String(pt.x);
-                  const xCol =
-                    fig?.layout?.xaxis?.title?.text ||
+                  const isPieLocal = pt?.data?.type === "pie";
+                  if (!isBarLocal && !isPieLocal) return;
+                  
+                  let value = null;
+                  let col = null;
+                  
+                  if (isBarLocal) {
+                    value = String(pt.x);
+                    col = fig?.layout?.xaxis?.title?.text ||
                     fig?.layout?.xaxis?.title;
-
-                  if (!xCol) return;
-
-                  const isShift = !!ev?.event?.shiftKey;
+                  }
+                  else if (isPieLocal) {
+                    value = String(pt.label);
+                    col = pt?.data?.meta?.col;
+                  }
+                    
+                  if (col == null || value == null) return;
 
                   setSelectedCategory((prev) => {
-                    if (!prev || prev.col !== xCol) return { col: xCol, values: [xVal] };
+                    if (!prev || prev.col !== col) return { col: col, values: [value] };
 
-                    const has = prev.values.includes(xVal);
+                    const has = prev.values.includes(value);
 
-                    // Shift-click removes
-                    if (isShift) {
-                      if (!has) return prev;
-                      const next = prev.values.filter((v) => v !== xVal);
-                      console.log("Bar removed:", xCol, xVal);
-                      return next.length ? { col: xCol, values: next } : null;
+                    // Remove selected value or add unselected value
+                    if (has) {
+                      const next = prev.values.filter((v) => v !== value);
+                      console.log("Bar deselected:", col, value);
+                      return next.length ? { col, values: next } : null;
+                    } else {
+                      console.log("Bar selected:", col, value);
+                      return { col, values: [...prev.values, value] };
                     }
-
-                    // Normal click adds
-                    if (has) return prev;
-                    return { col: xCol, values: [...prev.values, xVal] };
                   });
-
-                  console.log("Bars selected:", xCol, xVal);
                 });
               }}
               
@@ -217,6 +297,18 @@ export default function ChatBox() {
           >
             ➤
           </button>
+          {(selectedCategory || selectedRowIds.length > 0) && (
+            <button
+              type="button"
+              className="reset-filters-button"
+              onClick={() => {
+                setSelectedCategory(null);
+                setSelectedRowIds([]);
+              }}
+            >
+              Reset filters
+            </button>
+          )}
         </div>
       </div>
     </div>
