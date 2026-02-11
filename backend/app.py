@@ -82,14 +82,27 @@ def query():
     if selected_category and selected_category.get("col"):
         col_name = selected_category["col"]
         if col_name in selected_dataset.columns:
-            values = selected_category.get("values")
-            if values:
-                selected_dataset = selected_dataset[selected_dataset[col_name].astype(str).isin([str(v) for v in values])]
+            # numeric range selection (histogram bins)
+            ranges = selected_category.get("ranges")
+            if ranges:
+                num = pd.to_numeric(selected_dataset[col_name], errors="coerce")
+                mask = False
+                for r in ranges:
+                    if not r or len(r) != 2:
+                        continue
+                    lo, hi = r
+                    mask = mask | ((num >= float(lo)) & (num < float(hi)))
+                selected_dataset = selected_dataset[mask]
+            # categorical selection
             else:
-                # single value
-                val = selected_category.get("value")
-                if val is not None:
-                    selected_dataset = selected_dataset[selected_dataset[col_name].astype(str) == str(val)]
+                values = selected_category.get("values")
+                if values:
+                    selected_dataset = selected_dataset[selected_dataset[col_name].astype(str).isin([str(v) for v in values])]
+                else:
+                    # single value
+                    val = selected_category.get("value")
+                    if val is not None:
+                        selected_dataset = selected_dataset[selected_dataset[col_name].astype(str) == str(val)]
 
     if selected_ids:
         selected_dataset = selected_dataset[selected_dataset["_row_id"].isin(selected_ids)]

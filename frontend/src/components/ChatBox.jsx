@@ -81,6 +81,42 @@ export default function ChatBox() {
     return traces.map((tr) => {
       const type = tr?.type;
 
+      const isHistogram = tr?.meta?.kind === "histogram";
+      if (type === "histogram" || (type === "bar" && isHistogram)) {
+        const histCol = tr?.meta?.col;
+        const hasRangeSelection =
+          !!selectedCategory?.col &&
+          Array.isArray(selectedCategory?.ranges) &&
+          selectedCategory.ranges.length > 0 &&
+          selectedCategory.col === histCol;
+
+        if (!hasRangeSelection) return tr;
+
+        const selectedRanges = selectedCategory.ranges.map(([a, b]) => [
+          Number(a),
+          Number(b),
+        ]);
+        const ranges = tr.customdata || [];
+
+        const isSelected = ranges.map((val) => {
+          const [low, high] = val || [];
+          return selectedRanges.some(
+            ([a, b]) => Number(low) === a && Number(high) === b,
+          );
+        });
+        return {
+          ...tr,
+          marker: {
+            ...(tr.marker || {}),
+            opacity: isSelected.map((s) => (s ? 1 : 0.25)),
+            line: {
+              color: isSelected.map((s) => (s ? "#111" : "rgba(0,0,0,0.35)")),
+              width: isSelected.map((s) => (s ? 2 : 1.5)),
+            },
+          },
+        };
+      }
+
       // Bar chart
       if (type === "bar") {
         const xs = (tr.x || []).map(String);
@@ -130,7 +166,7 @@ export default function ChatBox() {
               color: labels.map((l) =>
                 selectedSet.has(l) ? "#111" : "rgba(0,0,0,0)",
               ),
-              width: labels.map((l) => (selectedSet.has(l) ? 2 : 0)),
+              width: labels.map((l) => (selectedSet.has(l) ? 2.5 : 1.5)),
             },
           },
         };
@@ -188,6 +224,35 @@ export default function ChatBox() {
 
                 let value = null;
                 let col = null;
+
+                const isHistogram = (pt?.data?.meta?.kind === "histogram");
+
+                if (isHistogram) {
+                  const range = pt.customdata;
+                  col = pt?.data?.meta?.col;
+
+                  if (!range || range.length !== 2) return;
+
+                  const [low, high] = range.map(Number);
+                  
+                  // Update selectedCategory for histogram bins 
+                  setSelectedCategory((prev) => {
+                    if (!prev || prev.col !== col || !Array.isArray(prev.ranges)) {
+                      return { col, ranges: [[low, high]] };
+                    }
+
+                    const exists = prev.ranges.some(([a, b]) => Number(a) === low && Number(b) === high);
+                    if (exists) {
+                      const next = prev.ranges.filter(([a, b]) => !(Number(a) === low && Number(b) === high));
+                      console.log("Histogram bin deselected:", col, [low, high]);
+                      return next.length ? { col, ranges: next } : null;
+                    } else {
+                      console.log("Histogram bin selected:", col, [low, high]);
+                      return { col, ranges: [...prev.ranges, [low, high]] };
+                    }
+                  });
+                  return;
+                }
 
                 if (isBarLocal) {
                   value = String(pt.x);
