@@ -1,6 +1,7 @@
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
+import numpy as np
 
 class ChartGenerator:
     def __init__(self, dataset):
@@ -33,9 +34,10 @@ class ChartGenerator:
             y=y_col,
             color=color_col if color_col and color_col in plot_data.columns else None,
             title=f"{y_col} vs {x_col}",
-            hover_data=[col for col in plot_data.columns[:3] if col not in [x_col, y_col]]
+            hover_data=(["_row_id"] + [col for col in plot_data.columns[:3] if col not in [x_col, y_col, "_row_id"]])
         )
-        
+        # Add row identifiers
+        fig.update_traces(customdata=plot_data[["_row_id"]].to_numpy())
         return self._style_chart(fig, title=f"{y_col} vs {x_col}", kind="scatter")
     
     def create_histogram(self, x_col, color_col=None):
@@ -48,20 +50,53 @@ class ChartGenerator:
         
         # Check if numeric - if not then create a count chart instead
         if pd.api.types.is_numeric_dtype(plot_data[x_col]):
-            fig = px.histogram(
-                plot_data,
-                x=x_col,
-                color=color_col if color_col and color_col in plot_data.columns else None,
-                title=f"Distribution of {x_col}",
-                nbins=min(30, max(10, len(plot_data[x_col].unique())))
+            values = pd.to_numeric(plot_data[x_col], errors="coerce").dropna().to_numpy()
+            if values.size == 0:
+                raise ValueError(f"No valid numeric data for histogram of {x_col}")
+            
+            # Number of unique values to decide binning, capped at 10 maximum bins for aesthetics
+            nbins = min(10, len(np.unique(values)))
+
+            # Min and max for bin edges
+            vmin = np.min(values)
+            vmax = np.max(values)
+
+            if vmin == vmax:
+                edges = np.array([vmin - 0.5, vmax + 0.5], dtype=float)
+                counts = np.array([len(values)], dtype=int)
+            else:
+                # Create bins that cover the range, rounded to integers
+                vmin = int(np.floor(values.min()))
+                vmax = int(np.ceil(values.max()))
+
+                edges = np.linspace(vmin, vmax, nbins + 1)
+                counts, _ = np.histogram(values, bins=edges)
+
+            labels = [f"{int(round(edges[i]))}–{int(round(edges[i+1]))}"
+                for i in range(len(edges) - 1)]
+            ranges = [[float(edges[i]), float(edges[i+1])] for i in range(len(edges)-1)]
+
+            fig = go.Figure(
+                data=[
+                    go.Bar(
+                        x=labels, 
+                        y=counts,
+                        customdata=ranges,
+                        meta={"col": x_col, "kind": "histogram"},
+                        hovertemplate=(
+                            f"{x_col} range: %{{customdata[0]:.2f}} - %{{customdata[1]:.2f}}<br>"
+                            "Count: %{y}<extra></extra>"
+                        ),
+                    )
+                ]
             )
-        else:
-            # For categorical data, use value counts
-            counts = plot_data[x_col].value_counts().head(20)
-            fig = go.Figure(data=[go.Bar(x=counts.index, y=counts.values)])
-            fig.update_layout(title=f"Count of {x_col}", xaxis_title=x_col, yaxis_title="Count")
-        
-        return self._style_chart(fig, title=f"Distribution of {x_col}", rotate_x=False, kind="histogram")
+
+            fig.update_layout(
+            title=f"Distribution of {x_col}",
+            xaxis_title=x_col,
+            yaxis_title="Count",
+        )
+        return self._style_chart(fig, title=f"Distribution of {x_col}", rotate_x=True, kind="histogram")
 
     def create_box_plot(self, x_col, group_col=None):
         """Create box plot"""
@@ -165,7 +200,7 @@ class ChartGenerator:
                 values=counts.values,
                 title=f"Pie Chart of {names_col} (Top 10)" # Only display top 10 for aesthetics
             )
-        
+        fig.update_traces(meta={"col": names_col})
         return self._style_chart(fig, title=f"Distribution of {names_col}", rotate_x=False, kind="pie")
     
     def create_line_chart(self, x_col, y_col, color_col=None):

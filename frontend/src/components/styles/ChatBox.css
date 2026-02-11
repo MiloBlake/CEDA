@@ -48,7 +48,7 @@
 
 .bot-message-container {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   margin-bottom: 20px;
 }
 
@@ -65,12 +65,19 @@
 }
 
 .bot-message {
+  flex: 1;
+  min-width: 0;
   background-color: white;
   padding: 10px 15px;
   border-radius: 4px 18px 18px 18px;
-  max-width: 70%;
+  max-width: none;
   word-break: break-word;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.bot-message.chart-message {
+  max-width: 100%;
+  width: 100%;
 }
 
 .typing-indicator {
@@ -115,6 +122,25 @@
   font-size: 16px;
   outline: none;
   background-color: #f8f9fa;
+}
+
+.reset-filters-button{
+  margin-left: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  background: transparent;
+  color: #d3385f;
+  border: 1px solid rgba(255, 11, 84, 0.35);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.08s ease;
+}
+.reset-filters-button:hover{
+  background: rgba(255, 11, 84, 0.06);
+  box-shadow: 0 0 0 4px rgba(255, 11, 84, 0.12);
+}
+.reset-filters-button:active{
+  transform: scale(0.98);
 }
 
 .send-button {

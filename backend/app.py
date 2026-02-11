@@ -51,6 +51,11 @@ def upload():
         
         global dataset
         dataset = pd.read_csv(io.BytesIO(file.read()))
+
+        # Add a unique row identifier
+        dataset = dataset.reset_index(drop=True)
+        dataset["_row_id"] = dataset.index
+
         return jsonify({
             "message": "File uploaded", 
             "columns": list(dataset.columns)
@@ -70,6 +75,42 @@ def query():
         return jsonify({"response": "No dataset uploaded."}), 400
     cols = list(dataset.columns)
 
+    selected_ids = (request.json or {}).get("selected_row_ids") or []
+    selected_dataset = dataset
+
+    selected_category = (request.json or {}).get("selected_category")
+    if selected_category and selected_category.get("col"):
+        col_name = selected_category["col"]
+        if col_name in selected_dataset.columns:
+            # numeric range selection (histogram bins)
+            ranges = selected_category.get("ranges")
+            if ranges:
+                num = pd.to_numeric(selected_dataset[col_name], errors="coerce")
+                mask = False
+                for r in ranges:
+                    if not r or len(r) != 2:
+                        continue
+                    lo, hi = r
+                    mask = mask | ((num >= float(lo)) & (num < float(hi)))
+                selected_dataset = selected_dataset[mask]
+            # categorical selection
+            else:
+                values = selected_category.get("values")
+                if values:
+                    selected_dataset = selected_dataset[selected_dataset[col_name].astype(str).isin([str(v) for v in values])]
+                else:
+                    # single value
+                    val = selected_category.get("value")
+                    if val is not None:
+                        selected_dataset = selected_dataset[selected_dataset[col_name].astype(str) == str(val)]
+
+    if selected_ids:
+        selected_dataset = selected_dataset[selected_dataset["_row_id"].isin(selected_ids)]
+
+    logger.info("selected_row_ids=%s", selected_ids[:20])
+    logger.info("selected_category=%s", selected_category)
+    logger.info("dataset rows=%d | selected rows=%d", len(dataset), len(selected_dataset))
+
     spec = parse_query(q, cols, llm=llm)
     if not spec:
         return jsonify({"response": "Could not understand the query."})
@@ -79,17 +120,17 @@ def query():
     
     # Attempt direct nlp handling first
     if operation == "avg" and col:
-        return jsonify({"result": round(float(pd.to_numeric(dataset[col], errors="coerce").mean()), 2)})
+        return jsonify({"result": round(float(pd.to_numeric(selected_dataset[col], errors="coerce").mean()), 2)})
     if operation == "sum" and col:
-        return jsonify({"result": round(float(pd.to_numeric(dataset[col], errors="coerce").sum()), 2)})
+        return jsonify({"result": round(float(pd.to_numeric(selected_dataset[col], errors="coerce").sum()), 2)})
     if operation == "max" and col:
-        return jsonify({"result": round(float(pd.to_numeric(dataset[col], errors="coerce").max()), 2)})
+        return jsonify({"result": round(float(pd.to_numeric(selected_dataset[col], errors="coerce").max()), 2)})
     if operation == "min" and col:
-        return jsonify({"result": round(float(pd.to_numeric(dataset[col], errors="coerce").min()), 2)})
+        return jsonify({"result": round(float(pd.to_numeric(selected_dataset[col], errors="coerce").min()), 2)})
     if operation == "count":
-        return jsonify({"result": int(len(dataset))})
+        return jsonify({"result": int(len(selected_dataset))})
     if operation == "list" and col:
-        return jsonify({"values": dataset[col].head(50).tolist()})
+        return jsonify({"values": selected_dataset[col].head(50).tolist()})
 
     # Chart generation
     if operation == "chart":
@@ -100,7 +141,7 @@ def query():
                 
         try:
             logger.info(f"Generating chart with spec: {chart_spec}")
-            chart = render_chart(dataset, chart_spec)
+            chart = render_chart(selected_dataset, chart_spec)
             return jsonify({"chart": chart.to_json(), "message": "Chart generated successfully."})
         except Exception as e:
             return jsonify({"response": f"Error generating chart: {str(e)}"})
