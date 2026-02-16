@@ -176,6 +176,26 @@ export default function ChatBox() {
     });
   }
 
+  // For mobile: truncate long categorical axis labels and set the tick angle
+  function truncateAxis(axis, values, maxLen = 12, tickangle = 90) {
+    if (!values || !values.length) return axis;
+
+    const tickvals = values.map(String);
+    const ticktext = tickvals.map((v) =>
+      v.length > maxLen ? v.slice(0, maxLen) + "…" : v
+    );
+
+    return {
+      ...(axis || {}),
+      type: "category",
+      tickmode: "array",
+      tickvals,
+      ticktext,
+      tickangle,
+      automargin: true,
+    };
+  }
+
   const renderMessage = (message, i) => {
     if (typeof message === "object" && message.type === "chart") {
       const isScatter = message.chart?.data?.[0]?.type === "scatter";
@@ -189,114 +209,207 @@ export default function ChatBox() {
         );
       }
 
+      const isMobile = window.innerWidth < 700;
       const layout = {
         ...message.chart.layout,
         autosize: true,
+        height: isMobile ? 450 : 500,
+        margin: isMobile ? { l: 95, r: 20, t: 40, b: 60 } : undefined,
+
+        ...(isMobile
+          ? {
+              legend: {
+                orientation: "h",
+                x: 0.5,
+                xanchor: "center",
+                y: -0.25,
+                yanchor: "top",
+              },
+            }
+          : {}),
       };
 
-      delete layout.width;
-      delete layout.height;
+      // for mobile, convert vertical bar charts to horizontal, otherwise they look very cramped
+      const isBar = data?.[0]?.type === "bar";
+      if (isMobile && isBar) {
+        // note axis lables
+        const xTitle = layout?.xaxis?.title?.text ?? layout?.xaxis?.title ?? "";
+        const yTitle = layout?.yaxis?.title?.text ?? layout?.yaxis?.title ?? "";
+
+        // flip vertical bars to horizontal bars
+        data = data.map((tr) => ({
+          ...tr,
+          orientation: "h",
+          x: tr.y,
+          y: tr.x,
+        }));
+
+        layout.xaxis = {
+          ...(layout.xaxis || {}),
+          title: { text: yTitle || xTitle },
+          automargin: true,
+          tickangle: 0,
+        };
+        layout.yaxis = {
+          ...(layout.yaxis || {}),
+          title: null,
+          tickmode: "array",
+          tickfont: { size: 10 },
+        };
+
+        layout.height = 520; // give enough space for names
+        layout.margin = { l: 40, r: 20, t: 50, b: 60 };
+      }
+
+      if (isMobile) {
+        const t0 = data?.[0];
+        const tickAngle = isBar ? 0 : 90;
+
+        // truncate categorical X axis
+        if (t0?.x && typeof t0.x[0] === "string") {
+          layout.xaxis = truncateAxis(layout.xaxis, t0.x, 12, tickAngle);
+        }
+
+        // truncate categorical Y axis
+        if (t0?.y && typeof t0.y[0] === "string") {
+          layout.yaxis = truncateAxis(layout.yaxis, t0.y, 12, tickAngle);
+        }
+      }
 
       // interaction type
       layout.dragmode = isScatter ? "select" : false;
-      layout.clickmode = isScatter ? "event" : "event";
+      layout.clickmode = isMobile ? false : "event";
+      layout.hovermode = isMobile ? false : "closest";
 
       return (
-        <div>
-          <Plot
-            key={`chart-${i}-${message.chart?.layout?.title?.text || "untitled"}`}
-            data={data}
-            layout={layout}
-            config={{ responsive: true, displaylogo: false }}
-            style={{ width: "100%", height: "650px" }}
-            onInitialized={(fig, graphDiv) => {
-              // Remove any previous handler
-              if (graphDiv.removeListener)
-                graphDiv.removeAllListeners("plotly_click");
+        <div style={{ width: "100%", overflowX: "auto", minWidth: "320px" }}>
+          <div>
+            <Plot
+              key={`chart-${i}-${message.chart?.layout?.title?.text || "untitled"}`}
+              data={data}
+              layout={layout}
+              config={{
+                responsive: true,
+                displaylogo: false,
+                displayModeBar: !isMobile,
+                scrollZoom: !isMobile,
+              }}
+              useResizeHandler
+              style={{ width: "100%", height: isMobile ? "420px" : "650px" }}
+              onInitialized={(fig, graphDiv) => {
+                // Disable tapping selection on mobile
+                if (isMobile) return;
 
-              graphDiv.on("plotly_click", (ev) => {
-                const pt = ev?.points?.[0];
-                if (!pt) return;
+                if (graphDiv.removeListener)
+                  graphDiv.removeAllListeners("plotly_click");
 
-                const isBarLocal = pt?.data?.type === "bar";
-                const isPieLocal = pt?.data?.type === "pie";
-                if (!isBarLocal && !isPieLocal) return;
+                graphDiv.on("plotly_click", (ev) => {
+                  const pt = ev?.points?.[0];
+                  if (!pt) return;
 
-                let value = null;
-                let col = null;
+                  const isBarLocal = pt?.data?.type === "bar";
+                  const isPieLocal = pt?.data?.type === "pie";
+                  if (!isBarLocal && !isPieLocal) return;
 
-                const isHistogram = (pt?.data?.meta?.kind === "histogram");
+                  let value = null;
+                  let col = null;
 
-                if (isHistogram) {
-                  const range = pt.customdata;
-                  col = pt?.data?.meta?.col;
+                  const isHistogram = pt?.data?.meta?.kind === "histogram";
 
-                  if (!range || range.length !== 2) return;
+                  if (isHistogram) {
+                    const range = pt.customdata;
+                    col = pt?.data?.meta?.col;
 
-                  const [low, high] = range.map(Number);
-                  
-                  // Update selectedCategory for histogram bins 
+                    if (!range || range.length !== 2) return;
+
+                    const [low, high] = range.map(Number);
+
+                    // Update selectedCategory for histogram bins
+                    setSelectedCategory((prev) => {
+                      if (
+                        !prev ||
+                        prev.col !== col ||
+                        !Array.isArray(prev.ranges)
+                      ) {
+                        return { col, ranges: [[low, high]] };
+                      }
+
+                      const exists = prev.ranges.some(
+                        ([a, b]) => Number(a) === low && Number(b) === high,
+                      );
+                      if (exists) {
+                        const next = prev.ranges.filter(
+                          ([a, b]) =>
+                            !(Number(a) === low && Number(b) === high),
+                        );
+                        console.log("Histogram bin deselected:", col, [
+                          low,
+                          high,
+                        ]);
+                        return next.length ? { col, ranges: next } : null;
+                      } else {
+                        console.log("Histogram bin selected:", col, [
+                          low,
+                          high,
+                        ]);
+                        return { col, ranges: [...prev.ranges, [low, high]] };
+                      }
+                    });
+                    return;
+                  }
+
+                  if (isBarLocal) {
+                    value = String(pt.x);
+                    col =
+                      fig?.layout?.xaxis?.title?.text ||
+                      fig?.layout?.xaxis?.title;
+                  } else if (isPieLocal) {
+                    value = String(pt.label);
+                    col = pt?.data?.meta?.col;
+                  }
+
+                  if (col == null || value == null) return;
+
                   setSelectedCategory((prev) => {
-                    if (!prev || prev.col !== col || !Array.isArray(prev.ranges)) {
-                      return { col, ranges: [[low, high]] };
-                    }
+                    if (!prev || prev.col !== col)
+                      return { col: col, values: [value] };
 
-                    const exists = prev.ranges.some(([a, b]) => Number(a) === low && Number(b) === high);
-                    if (exists) {
-                      const next = prev.ranges.filter(([a, b]) => !(Number(a) === low && Number(b) === high));
-                      console.log("Histogram bin deselected:", col, [low, high]);
-                      return next.length ? { col, ranges: next } : null;
+                    const has = prev.values.includes(value);
+
+                    // Remove selected value or add unselected value
+                    if (has) {
+                      const next = prev.values.filter((v) => v !== value);
+                      console.log("Bar deselected:", col, value);
+                      return next.length ? { col, values: next } : null;
                     } else {
-                      console.log("Histogram bin selected:", col, [low, high]);
-                      return { col, ranges: [...prev.ranges, [low, high]] };
+                      console.log("Bar selected:", col, value);
+                      return { col, values: [...prev.values, value] };
                     }
                   });
-                  return;
-                }
-
-                if (isBarLocal) {
-                  value = String(pt.x);
-                  col =
-                    fig?.layout?.xaxis?.title?.text ||
-                    fig?.layout?.xaxis?.title;
-                } else if (isPieLocal) {
-                  value = String(pt.label);
-                  col = pt?.data?.meta?.col;
-                }
-
-                if (col == null || value == null) return;
-
-                setSelectedCategory((prev) => {
-                  if (!prev || prev.col !== col)
-                    return { col: col, values: [value] };
-
-                  const has = prev.values.includes(value);
-
-                  // Remove selected value or add unselected value
-                  if (has) {
-                    const next = prev.values.filter((v) => v !== value);
-                    console.log("Bar deselected:", col, value);
-                    return next.length ? { col, values: next } : null;
-                  } else {
-                    console.log("Bar selected:", col, value);
-                    return { col, values: [...prev.values, value] };
-                  }
                 });
-              });
-            }}
-            // For scatter charts
-            onSelected={(e) => {
-              const pts = e?.points || [];
-              const ids = pts
-                .map((p) => p.customdata?.[0])
-                .filter((v) => v != null);
-              if (!ids.length) return;
-              setSelectedRowIds([...new Set(ids)]);
-            }}
-            onDeselect={() => {
-              setSelectedRowIds([]);
-            }}
-          />
+              }}
+              // For scatter charts
+              onSelected={
+                isMobile
+                  ? undefined
+                  : (e) => {
+                      const pts = e?.points || [];
+                      const ids = pts
+                        .map((p) => p.customdata?.[0])
+                        .filter((v) => v != null);
+                      if (!ids.length) return;
+                      setSelectedRowIds([...new Set(ids)]);
+                    }
+              }
+              onDeselect={
+                isMobile
+                  ? undefined
+                  : () => {
+                      setSelectedRowIds([]);
+                    }
+              }
+            />
+          </div>
         </div>
       );
     }
@@ -326,7 +439,6 @@ export default function ChatBox() {
 
             {/* Bot Message or Typing */}
             <div className="bot-message-container">
-              <div className="bot-avatar">💭</div>
 
               {m.bot === "__typing__" && (
                 <div className="bot-message">
