@@ -182,7 +182,7 @@ export default function ChatBox() {
 
     const tickvals = values.map(String);
     const ticktext = tickvals.map((v) =>
-      v.length > maxLen ? v.slice(0, maxLen) + "…" : v
+      v.length > maxLen ? v.slice(0, maxLen) + "…" : v,
     );
 
     return {
@@ -439,7 +439,6 @@ export default function ChatBox() {
 
             {/* Bot Message or Typing */}
             <div className="bot-message-container">
-
               {m.bot === "__typing__" && (
                 <div className="bot-message">
                   <div className="typing-indicator">
