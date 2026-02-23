@@ -213,7 +213,7 @@ export default function ChatBox() {
       const layout = {
         ...message.chart.layout,
         autosize: true,
-        height: isMobile ? 450 : 500,
+        height: isMobile ? 450 : 650,
         margin: isMobile ? { l: 95, r: 20, t: 40, b: 60 } : undefined,
 
         ...(isMobile
