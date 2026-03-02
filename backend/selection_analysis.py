@@ -2,10 +2,8 @@ import json
 from typing import Any, Dict, Optional
 
 import pandas as pd
-try:
-    from llama_cpp import Llama
-except Exception:
-    Llama = Any
+
+Llama = Any
 
 def build_selection_comparison_packet(base_df: pd.DataFrame,
                                       selected_df: pd.DataFrame,
