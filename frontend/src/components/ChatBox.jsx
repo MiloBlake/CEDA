@@ -414,7 +414,7 @@ export default function ChatBox() {
       );
     }
 
-    return <div>{message}</div>;
+    return <div style={{ whiteSpace: "pre-wrap", wordWrap: "break-word" }}>{message}</div>;
   };
 
   return (
