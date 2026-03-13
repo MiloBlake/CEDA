@@ -1,3 +1,4 @@
+from pydoc import text
 import re
 import json
 import logging
@@ -5,11 +6,14 @@ import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from llama_cpp import Llama
+from matplotlib import text
 import pandas as pd
 import io
+from typing import Any, Dict, List, Optional
 
 from nlp_handler import parse_query
 from graphs import render_chart
+from selection_analysis import build_selection_comparison_packet, run_llm_selection_analysis
 
 # Setup logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -26,16 +30,28 @@ app = Flask(__name__)
 CORS(app)
 
 # Resolve model path 
-MODEL_NAME = "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+MODEL_NAME = "Phi-3.5-mini-instruct-Q3_K_M.gguf"
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "llm", MODEL_NAME)
 
 if os.path.exists(MODEL_PATH):
     try:
-        llm = Llama(model_path=MODEL_PATH)
+        llm = Llama(
+            model_path=MODEL_PATH,
+            n_ctx=1024,
+            n_threads=12,
+            n_batch=256,
+            use_mmap=True,
+            f16_kv=True,
+        )
+        llm.create_chat_completion(
+            messages=[{"role":"user","content":"ping"}],
+            max_tokens=1
+            )
     except Exception as e:
-        logger.warning("Model file not found at %s", MODEL_PATH)
+        logger.exception("Model loading error: %s", e)
 else:
-    logger.exception("Model loading error")
+    logger.warning("Model file not found at %s", MODEL_PATH)
+
 
 # UPLOAD DATASET - store DataFrame in memory
 @app.route("/upload", methods=["POST"])
@@ -61,10 +77,61 @@ def upload():
             "columns": list(dataset.columns)
         })
     except Exception as e:
-        print(f"Upload error: {str(e)}")
+        logger.exception("Upload error: %s", e)
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
+
+def apply_selection(df: pd.DataFrame,
+                    selected_ids: Optional[List[int]] = None,
+                    selected_category: Optional[Dict[str, Any]] = None) -> pd.DataFrame:
+    """
+    Apply the UI selection onto df.
+    Supports:
+      - selected_row_ids: explicit row-id list
+      - selected_category: {col, value|values|ranges} for categorical / histogram range selection
+    """
+    out = df
+
+    # Category-based selection (bar/pie/hist bins)
+    if selected_category and selected_category.get("col"):
+        col_name = selected_category["col"]
+        if col_name in out.columns:
+            # numeric range selection (histogram bins)
+            ranges = selected_category.get("ranges")
+            if ranges:
+                num = pd.to_numeric(out[col_name], errors="coerce")
+                # Find rows that fall into any of the ranges
+                mask = pd.Series(False, index=out.index)
+                for r in ranges:
+                    if not r or len(r) != 2:
+                        continue
+                    lo, hi = r
+                    try:
+                        lo_f = float(lo)
+                        hi_f = float(hi)
+                    except Exception:
+                        continue
+                    mask = mask | ((num >= lo_f) & (num < hi_f))
+                out = out[mask]
+            else:
+                # categorical selection
+                values = selected_category.get("values")
+                if values:
+                    out = out[out[col_name].astype(str).isin([str(v) for v in values])]
+                else:
+                    # single value
+                    val = selected_category.get("value")
+                    if val is not None:
+                        out = out[out[col_name].astype(str) == str(val)]
+
+    # Explicit row-id selection (scatter selections etc.)
+    if selected_ids:
+        if "_row_id" in out.columns:
+            out = out[out["_row_id"].isin(selected_ids)]
+
+    return out
 
 # QUERY
 @app.route("/query", methods=["POST"])
@@ -76,61 +143,58 @@ def query():
     cols = list(dataset.columns)
 
     selected_ids = (request.json or {}).get("selected_row_ids") or []
-    selected_dataset = dataset
-
     selected_category = (request.json or {}).get("selected_category")
-    if selected_category and selected_category.get("col"):
-        col_name = selected_category["col"]
-        if col_name in selected_dataset.columns:
-            # numeric range selection (histogram bins)
-            ranges = selected_category.get("ranges")
-            if ranges:
-                num = pd.to_numeric(selected_dataset[col_name], errors="coerce")
-                mask = False
-                for r in ranges:
-                    if not r or len(r) != 2:
-                        continue
-                    lo, hi = r
-                    mask = mask | ((num >= float(lo)) & (num < float(hi)))
-                selected_dataset = selected_dataset[mask]
-            # categorical selection
-            else:
-                values = selected_category.get("values")
-                if values:
-                    selected_dataset = selected_dataset[selected_dataset[col_name].astype(str).isin([str(v) for v in values])]
-                else:
-                    # single value
-                    val = selected_category.get("value")
-                    if val is not None:
-                        selected_dataset = selected_dataset[selected_dataset[col_name].astype(str) == str(val)]
+    # Ensure selected_category is JSON serialisable
+    selected_category = json.loads(json.dumps(selected_category, default=str)) if selected_category else None
+    base_dataset = dataset
+    selected_dataset = base_dataset
 
-    if selected_ids:
-        selected_dataset = selected_dataset[selected_dataset["_row_id"].isin(selected_ids)]
+    selected_dataset = apply_selection(selected_dataset, selected_ids=selected_ids, selected_category=selected_category)
 
-    logger.info("selected_row_ids=%s", selected_ids[:20])
-    logger.info("selected_category=%s", selected_category)
-    logger.info("dataset rows=%d | selected rows=%d", len(dataset), len(selected_dataset))
-
-    spec = parse_query(q, cols, llm=llm)
-    if not spec:
-        return jsonify({"response": "Could not understand the query."})
+    # Quick check for if the user is asking for selection analysis
+    q_clean = q.strip().lower()
+    selection_exists = bool(selected_ids) or bool(selected_category)
     
-    operation = spec.get("operation")
-    col = spec.get("col")
-    
-    # Attempt direct nlp handling first
-    if operation == "avg" and col:
-        return jsonify({"result": round(float(pd.to_numeric(selected_dataset[col], errors="coerce").mean()), 2)})
-    if operation == "sum" and col:
-        return jsonify({"result": round(float(pd.to_numeric(selected_dataset[col], errors="coerce").sum()), 2)})
-    if operation == "max" and col:
-        return jsonify({"result": round(float(pd.to_numeric(selected_dataset[col], errors="coerce").max()), 2)})
-    if operation == "min" and col:
-        return jsonify({"result": round(float(pd.to_numeric(selected_dataset[col], errors="coerce").min()), 2)})
-    if operation == "count":
-        return jsonify({"result": int(len(selected_dataset))})
-    if operation == "list" and col:
-        return jsonify({"values": selected_dataset[col].head(50).tolist()})
+    # LLM Analysis of selection vs rest
+    if q_clean.startswith(("analyse", "analyze", "analysis")):
+        if selection_exists:
+            try:
+                packet = build_selection_comparison_packet(
+                    base_df=base_dataset,
+                    selected_df=selected_dataset,
+                    selected_category=selected_category
+                )
+                llm_analysis = run_llm_selection_analysis(llm, packet)
+                return jsonify({"response": llm_analysis, "selection_analysis": packet})
+            except Exception as e:
+                logger.exception("selection_analysis failed: %s", e)
+                return jsonify({"response": f"Selection analysis failed: {str(e)}"}), 500
+        else:
+            return jsonify({
+                "response": "There is no active selection to analyse. Select part of a chart first."
+            })
+    else:
+        # Otherwise, attempt to parse the query for operations / charts
+        spec = parse_query(q, cols, llm=llm)
+        if not spec:
+            return jsonify({"response": "Could not understand the query."})
+        
+        operation = spec.get("operation")
+        col = spec.get("col")
+        
+        # Attempt direct nlp handling first
+        if operation == "avg" and col:
+            return jsonify({"result": round(float(pd.to_numeric(selected_dataset[col], errors="coerce").mean()), 2)})
+        if operation == "sum" and col:
+            return jsonify({"result": round(float(pd.to_numeric(selected_dataset[col], errors="coerce").sum()), 2)})
+        if operation == "max" and col:
+            return jsonify({"result": round(float(pd.to_numeric(selected_dataset[col], errors="coerce").max()), 2)})
+        if operation == "min" and col:
+            return jsonify({"result": round(float(pd.to_numeric(selected_dataset[col], errors="coerce").min()), 2)})
+        if operation == "count":
+            return jsonify({"result": int(len(selected_dataset))})
+        if operation == "list" and col:
+            return jsonify({"values": selected_dataset[col].head(50).tolist()})
 
     # Chart generation
     if operation == "chart":
@@ -144,7 +208,7 @@ def query():
             chart = render_chart(selected_dataset, chart_spec)
             return jsonify({"chart": chart.to_json(), "message": "Chart generated successfully."})
         except Exception as e:
-            return jsonify({"response": f"Error generating chart: {str(e)}"})
+            logger.exception("Error generating chart: %s", e)
         
     return jsonify({"response": "Could not understand"})
 
