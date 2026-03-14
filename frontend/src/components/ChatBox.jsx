@@ -119,7 +119,7 @@ export default function ChatBox() {
 
       // Bar chart
       if (type === "bar") {
-        const xs = (tr.x || []).map(String);
+        const xs = (Array.isArray(tr.x) ? tr.x : []).map(String);
 
         // Check if default selection applies
         const defaultSelectionApplies =

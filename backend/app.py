@@ -1,15 +1,13 @@
-from pydoc import text
-import re
 import json
 import logging
 import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from llama_cpp import Llama
-from matplotlib import text
 import pandas as pd
 import io
 from typing import Any, Dict, List, Optional
+import chardet
 
 from nlp_handler import parse_query
 from graphs import render_chart
@@ -65,8 +63,17 @@ def upload():
         if file.filename == '':
             return jsonify({"error": "No file selected"}), 400
         
+        # Try reading the file with pandas, with a fallback in the case of encoding issues
         global dataset
-        dataset = pd.read_csv(io.BytesIO(file.read()))
+        try:
+            dataset = pd.read_csv(io.BytesIO(file.read()))
+        except UnicodeDecodeError:
+            file.seek(0) # reset file pointer
+            raw_file = file.read()
+            # Use chardet to detect encoding method
+            detected = chardet.detect(raw_file)
+            encoding = detected.get('encoding', 'latin-1')
+            dataset = pd.read_csv(io.BytesIO(raw_file), encoding=encoding)
 
         # Add a unique row identifier
         dataset = dataset.reset_index(drop=True)
@@ -156,7 +163,7 @@ def query():
     selection_exists = bool(selected_ids) or bool(selected_category)
     
     # LLM Analysis of selection vs rest
-    if q_clean.startswith(("analyse", "analyze", "analysis")):
+    if q_clean.startswith(("analyse", "analyze", "analysis", "analyse selection", "analyze selection", "selection analysis")):
         if selection_exists:
             try:
                 packet = build_selection_comparison_packet(
