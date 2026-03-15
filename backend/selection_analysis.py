@@ -1,3 +1,7 @@
+'''
+This module provides functions for analysing a selected subset of data compared to the rest of the dataset, 
+and for generating an interpretation of the findings using an LLM.  
+'''
 import json
 from typing import Any, Dict, Optional
 

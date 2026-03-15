@@ -1,3 +1,7 @@
+'''
+This module provides functions for parsing user queries to detect the intended operation (e.g. average, sum, chart) and the relevant columns.
+It uses rule-based keyword detection and fuzzy matching, with an optional fallback to an LLM for more complex queries.
+'''
 import json
 import re
 from difflib import SequenceMatcher
@@ -24,6 +28,9 @@ CHART_KEYWORDS = [
 ]
 
 def normalise_text(text: str) -> str:
+    if not text:
+        logger.warning("Received empty text in normalise_text")
+        return ""
     # Make text lowercase and remove special characters
     text = text.lower()
     text = re.sub(r"[^a-z0-9\s]", " ", text)
@@ -31,6 +38,9 @@ def normalise_text(text: str) -> str:
     return text
     
 def _fuzzy_has(tokens, keywords, thresh=0.80):
+    if not tokens or not keywords:
+        logger.warning("_fuzzy_has called with empty tokens or keywords")
+        return False
     # Check if any token matches any keyword with fuzzy matching
     for t in tokens:
         for k in keywords:
@@ -41,7 +51,13 @@ def _fuzzy_has(tokens, keywords, thresh=0.80):
     return False
 
 def detect_intent(query: str) -> str:
+    if not query or not isinstance(query, str):
+        logger.warning(f"detect_intent received invalid query: {type(query)}")
+        return "unknown"
     q = normalise_text(query)
+    if not q:
+        logger.warning("detect_intent received empty query after normalization")
+        return "unknown"
     tokens = re.findall(r"[a-z]+", q)
     if _fuzzy_has(tokens, CHART_KEYWORDS): return "chart"
     if _fuzzy_has(tokens, AVG_KEYWORDS): return "avg"
@@ -55,7 +71,12 @@ def detect_intent(query: str) -> str:
 
 
 def detect_chart_type(query: str) -> str:
+    if not query or not isinstance(query, str):
+        logger.warning(f"detect_chart_type received invalid query: {type(query)}")
+        return None
     q = normalise_text(query)
+    if not q:
+        return None
     
     if "scatter" in q or "correlation" in q or "relationship" in q:
         return "scatter"
@@ -75,6 +96,7 @@ def detect_chart_type(query: str) -> str:
     if "pie chart" in q or "pie graph" in q or "pie" in q:
         return "pie"
     
+    # 
     if any(w in q for w in ["chart", "graph", "plot", "visualize", "display"]):
         return None
     
@@ -82,6 +104,15 @@ def detect_chart_type(query: str) -> str:
 
 
 def detect_columns(query: str, available_columns: list[str], max_cols: int = 3) -> list[str]:
+    if not query or not isinstance(query, str):
+        logger.warning(f"detect_columns received invalid query")
+        return []
+    if not available_columns or not isinstance(available_columns, list):
+        logger.warning(f"detect_columns received invalid columns: {type(available_columns)}")
+        return []
+    if max_cols < 1:
+        logger.warning(f"detect_columns max_cols must be > 0, got {max_cols}")
+        return []
     # Find columns mentioned in the query using fuzzy matching
     query_norm = normalise_text(query)
     q_tokens = set(re.findall(r"[a-z0-9]+", query_norm))
@@ -130,6 +161,16 @@ def parse_query(query: str, columns: list[str], llm=None) -> dict | None:
         "raw": "<original query>"
         }
     '''
+    if not query or not isinstance(query, str):
+        logger.warning("parse_query: query is None or not a string")
+        return None
+    if not isinstance(columns, list):
+        logger.warning(f"parse_query: columns must be a list, got {type(columns)}")
+        return None
+    if not columns or all(not c for c in columns):
+        logger.warning("parse_query: columns list is empty")
+        return None
+    
     q = normalise_text(query) 
     intent = detect_intent(query)
     mentioned = detect_columns(query, columns, max_cols=2)

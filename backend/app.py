@@ -1,3 +1,7 @@
+''' 
+This is the main Flask application for the Data Analysis Chatbot backend.
+It provides endpoints for uploading datasets, querying for insights and charts, and analysing user selections.
+'''
 import json
 import logging
 import os

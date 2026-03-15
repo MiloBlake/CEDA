@@ -1,3 +1,7 @@
+'''
+This module provides functions for generating charts and visualizations, 
+including bar charts, pie charts, scatter plots, line charts, histograms and box plots.
+'''
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
