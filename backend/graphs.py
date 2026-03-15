@@ -1,3 +1,7 @@
+'''
+This module provides functions for generating charts and visualizations, 
+including bar charts, pie charts, scatter plots, line charts, histograms and box plots.
+'''
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
@@ -72,7 +76,7 @@ class ChartGenerator:
                 edges = np.linspace(vmin, vmax, nbins + 1)
                 counts, _ = np.histogram(values, bins=edges)
 
-            labels = [f"{int(round(edges[i]))}–{int(round(edges[i+1]))}"
+            labels = [f"{edges[i]:.1f}–{edges[i+1]:.1f}"
                 for i in range(len(edges) - 1)]
             ranges = [[float(edges[i]), float(edges[i+1])] for i in range(len(edges)-1)]
 
@@ -127,6 +131,9 @@ class ChartGenerator:
         self._validate_column(x_col)
         
         plot_data = self.dataset.dropna(subset=[x_col])
+
+        if plot_data.empty:
+            raise ValueError(f"No valid data for bar chart")
         
         if y_col and y_col in self.dataset.columns:
             self._validate_column(y_col)
@@ -135,44 +142,55 @@ class ChartGenerator:
             if plot_data.empty:
                 raise ValueError(f"No valid data for bar chart")
             
-            if pd.api.types.is_numeric_dtype(plot_data[y_col]):
+            is_y_numeric = pd.api.types.is_numeric_dtype(plot_data[y_col])
+            is_x_categorical = not pd.api.types.is_numeric_dtype(plot_data[x_col])
+            
+            # If both columns are categorical do a crosstab
+            if is_x_categorical and not is_y_numeric:
+                crosstab = pd.crosstab(plot_data[x_col], plot_data[y_col])
+                fig = px.bar(crosstab.reset_index().melt(id_vars=x_col), 
+                        x=x_col, y='value', color='variable',
+                        title=f"{x_col} vs {y_col}")
+                title = f"{x_col} vs {y_col}"
+            else:
+                # At least one is numeric - aggregate
+
+                # Ensure x is categorical and y is numeric
+                if is_y_numeric and not is_x_categorical:
+                    # Already the correct combination
+                    pass
+                elif not is_x_categorical and not is_y_numeric:
+                    # Swap to ensure x is categorical and y is numeric
+                    x_col, y_col = y_col, x_col
+
                 if agg_func == 'mean':
                     grouped = plot_data.groupby(x_col)[y_col].mean().reset_index()
-                    title = f"{y_col} by {x_col}"
+                    title = f"Avg {y_col} by {x_col}"
                 elif agg_func == 'sum':
                     grouped = plot_data.groupby(x_col)[y_col].sum().reset_index()
                     title = f"Total {y_col} by {x_col}"
                 else:  # count
                     grouped = plot_data.groupby(x_col)[y_col].count().reset_index()
                     title = f"Count of {y_col} by {x_col}"
-                    
-                # Limit categories
+                
+                # Limit categories to top 20
                 if len(grouped) > 20:
                     grouped = grouped.nlargest(20, y_col)
                     title += " (Top 20)"
                 
                 fig = px.bar(grouped, x=x_col, y=y_col, title=title)
-            else:
-                # Both are categorical - do a crosstab
-                crosstab = pd.crosstab(plot_data[x_col], plot_data[y_col])
-                fig = px.bar(crosstab.reset_index().melt(id_vars=x_col), 
-                           x=x_col, y='value', color='variable',
-                           title=f"{x_col} vs {y_col}")
         else:
             # Simple value counts
             if plot_data.empty:
                 raise ValueError(f"No valid data for bar chart of {x_col}")
             
             counts = plot_data[x_col].value_counts().head(20)
-            fig = go.Figure(data=[go.Bar(x=counts.index.astype(str), y=counts.values)])
-            fig.update_layout(
-                title=f"Count by {x_col}",
-                xaxis_title=x_col,
-                yaxis_title="Count"
-            )
+            title = f"Count by {x_col}"
+            fig = px.bar(x=counts.index.astype(str), y=counts.values, 
+                        title=title, 
+                        labels={'x': x_col, 'y': 'Count'})
         
-        return self._style_chart(fig, title=title if 'title' in locals() else f"Count by {x_col}", kind="bar")
-
+        return self._style_chart(fig, title=title, kind="bar")
     
     def create_pie_chart(self, names_col, values_col=None):
         """Create pie chart"""
@@ -264,6 +282,7 @@ class ChartGenerator:
                     pass
             fig.update_layout(showlegend=False)
 
+        # For other chart types, apply a single colour or palette
         elif kind == "histogram":
             fig.update_traces(marker_color=px.colors.qualitative.Set2[0])
 

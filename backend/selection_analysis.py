@@ -1,3 +1,7 @@
+'''
+This module provides functions for analysing a selected subset of data compared to the rest of the dataset, 
+and for generating an interpretation of the findings using an LLM.  
+'''
 import json
 from typing import Any, Dict, Optional
 
@@ -17,11 +21,6 @@ def build_selection_comparison_packet(base_df: pd.DataFrame,
     selected_ids = set(selected_df["_row_id"].tolist()) if len(selected_df) else set()
     rest_df = base_df[~base_df["_row_id"].isin(selected_ids)]
 
-    # If there are no rows in the rest of the dataset
-    if len(rest_df) == 0:
-        packet["notes"].append("Selection includes all rows; no 'rest' group to compare against.")
-        return packet
-
     n_sel = int(len(selected_df))
     n_total = int(len(base_df))
     pct = round((n_sel / n_total) * 100, 2) if n_total else 0.0
@@ -38,6 +37,12 @@ def build_selection_comparison_packet(base_df: pd.DataFrame,
         "notes": []
     }
 
+    # If there are no rows in the rest of the dataset
+    if len(rest_df) == 0:
+        packet["notes"].append("Selection includes all rows; no 'rest' group to compare against.")
+        return packet
+    
+    # If there are no rows in the selection
     if n_sel == 0:
         packet["notes"].append("No rows are selected; cannot compare selection vs rest.")
         return packet

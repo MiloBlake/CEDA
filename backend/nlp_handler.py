@@ -1,6 +1,13 @@
+'''
+This module provides functions for parsing user queries to detect the intended operation (e.g. average, sum, chart) and the relevant columns.
+It uses rule-based keyword detection and fuzzy matching, with an optional fallback to an LLM for more complex queries.
+'''
 import json
 import re
 from difflib import SequenceMatcher
+import logging
+
+logger = logging.getLogger("backend.nlp_handler")
 
 AVG_KEYWORDS = ["average", "mean", "avg"]
 SUM_KEYWORDS = ["sum", "total", "add", "combined"]
@@ -21,6 +28,9 @@ CHART_KEYWORDS = [
 ]
 
 def normalise_text(text: str) -> str:
+    if not text:
+        logger.warning("Received empty text in normalise_text")
+        return ""
     # Make text lowercase and remove special characters
     text = text.lower()
     text = re.sub(r"[^a-z0-9\s]", " ", text)
@@ -28,6 +38,9 @@ def normalise_text(text: str) -> str:
     return text
     
 def _fuzzy_has(tokens, keywords, thresh=0.80):
+    if not tokens or not keywords:
+        logger.warning("_fuzzy_has called with empty tokens or keywords")
+        return False
     # Check if any token matches any keyword with fuzzy matching
     for t in tokens:
         for k in keywords:
@@ -38,7 +51,13 @@ def _fuzzy_has(tokens, keywords, thresh=0.80):
     return False
 
 def detect_intent(query: str) -> str:
+    if not query or not isinstance(query, str):
+        logger.warning(f"detect_intent received invalid query: {type(query)}")
+        return "unknown"
     q = normalise_text(query)
+    if not q:
+        logger.warning("detect_intent received empty query after normalization")
+        return "unknown"
     tokens = re.findall(r"[a-z]+", q)
     if _fuzzy_has(tokens, CHART_KEYWORDS): return "chart"
     if _fuzzy_has(tokens, AVG_KEYWORDS): return "avg"
@@ -52,7 +71,12 @@ def detect_intent(query: str) -> str:
 
 
 def detect_chart_type(query: str) -> str:
+    if not query or not isinstance(query, str):
+        logger.warning(f"detect_chart_type received invalid query: {type(query)}")
+        return None
     q = normalise_text(query)
+    if not q:
+        return None
     
     if "scatter" in q or "correlation" in q or "relationship" in q:
         return "scatter"
@@ -72,6 +96,7 @@ def detect_chart_type(query: str) -> str:
     if "pie chart" in q or "pie graph" in q or "pie" in q:
         return "pie"
     
+    # 
     if any(w in q for w in ["chart", "graph", "plot", "visualize", "display"]):
         return None
     
@@ -79,6 +104,15 @@ def detect_chart_type(query: str) -> str:
 
 
 def detect_columns(query: str, available_columns: list[str], max_cols: int = 3) -> list[str]:
+    if not query or not isinstance(query, str):
+        logger.warning(f"detect_columns received invalid query")
+        return []
+    if not available_columns or not isinstance(available_columns, list):
+        logger.warning(f"detect_columns received invalid columns: {type(available_columns)}")
+        return []
+    if max_cols < 1:
+        logger.warning(f"detect_columns max_cols must be > 0, got {max_cols}")
+        return []
     # Find columns mentioned in the query using fuzzy matching
     query_norm = normalise_text(query)
     q_tokens = set(re.findall(r"[a-z0-9]+", query_norm))
@@ -127,6 +161,16 @@ def parse_query(query: str, columns: list[str], llm=None) -> dict | None:
         "raw": "<original query>"
         }
     '''
+    if not query or not isinstance(query, str):
+        logger.warning("parse_query: query is None or not a string")
+        return None
+    if not isinstance(columns, list):
+        logger.warning(f"parse_query: columns must be a list, got {type(columns)}")
+        return None
+    if not columns or all(not c for c in columns):
+        logger.warning("parse_query: columns list is empty")
+        return None
+    
     q = normalise_text(query) 
     intent = detect_intent(query)
     mentioned = detect_columns(query, columns, max_cols=2)
@@ -183,11 +227,15 @@ def parse_query(query: str, columns: list[str], llm=None) -> dict | None:
     return None
 
 def llm_query_parser_fallback(query: str, columns: list[str], llm) -> dict | None:
+    """
+    Fallback method to parse the query using an LLM if the rule-based parsing fails. 
+    The LLM is prompted to return a JSON with the proper structure.
+    """
     if not llm:
         return None
 
     prompt = (
-        "Return SINGLE LINE JSON only.\n"
+        "You are a JSON API. Return ONLY valid JSON, nothing else.\n"
         f"Columns: {', '.join(columns)}\n"
         'Schema: {"operation":"avg|sum|max|min|count|list","column":"<column name or null>"}\n'
         'Example 1: {"operation":"avg","column":"Age"}\n'
@@ -195,21 +243,70 @@ def llm_query_parser_fallback(query: str, columns: list[str], llm) -> dict | Non
         f"User: {query}\n"
     )
 
-    resp = llm(prompt, max_tokens=64, temperature=0.0, top_p=1.0)
-    text = resp["choices"][0].get("text", "").strip()
-
-    m = re.search(r"\{[^{}]*\}", text)
-    if not m:
+    # Validate LLM response structure
+    try:
+        resp = llm(prompt, max_tokens=200, temperature=0.0, top_p=1.0)
+    except Exception as e:
+        logger.warning(f"LLM call failed: {e}")
+        return None
+    
+    # Check response structure
+    if not resp or not isinstance(resp, dict):
+        logger.warning("LLM response is not a dict")
+        return None
+    
+    if "choices" not in resp or not resp["choices"]:
+        logger.warning("LLM response missing 'choices' or choices is empty")
+        return None
+    
+    # Extract text from response
+    first_choice = resp["choices"][0]
+    if not isinstance(first_choice, dict):
+        logger.warning("Choice is not a dict")
         return None
 
-    parsed = json.loads(m.group())
+    text = (
+        first_choice.get("text", "") or 
+        first_choice.get("message", {}).get("content", "")
+    ).strip()
+
+    if not text:
+        logger.warning("LLM response has no text content")
+        return None
+
+    # Extract JSON from text
+    m = re.search(r"\{[^{}]*\}", text)
+    if not m:
+        logger.warning(f"No JSON found in LLM response: {text[:100]}")
+        return None
+        
+    # Parse JSON
+    try:
+        parsed = json.loads(m.group())
+    except json.JSONDecodeError as e:
+        logger.warning(f"Failed to parse JSON from LLM response: {e}")
+        return None
+
+    # Validate parsed object structure
+    if not isinstance(parsed, dict):
+        logger.warning("Parsed JSON is not a dict")
+        return None
+    
     operation = parsed.get("operation")
     col = parsed.get("column")
 
-    if operation not in {"avg", "sum", "max", "min", "list", "count"}:
+    # Validate operation
+    valid_operations = {"avg", "sum", "max", "min", "list", "count"}
+    if operation not in valid_operations:
+        logger.warning(f"Invalid operation: {operation}")
         return None
 
-    if operation in {"avg","sum","max","min","list"} and col not in columns:
-        return None
-
-    return {"operation": operation, "col": col, "chart": None, "raw": query}
+    # Validate column
+    if operation in {"avg", "sum", "max", "min", "list"}:
+        if not col or col not in columns:
+            logger.warning(f"Invalid or missing column '{col}' for operation '{operation}'")
+            return None
+        
+    reworked_prompt = {"operation": operation, "col": col, "chart": None, "raw": query}
+    logger.info(f"LLM query parser fallback returned: {reworked_prompt}")
+    return reworked_prompt
