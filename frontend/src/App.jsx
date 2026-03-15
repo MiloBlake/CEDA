@@ -32,9 +32,10 @@ function App() {
             color: "#666",
             textAlign: "center"
           }}>
-            <div style={{ fontSize: "48px", marginBottom: "20px" }}></div>
-            <h2>Welcome to Steffy</h2>
-            <p>Upload a CSV file to start analysing your data!</p>
+            <div style={{marginBottom: "20px" }}></div>
+            <img src="/logo.png" alt="Logo" className="uploader-logo" />
+            <h2 style={{ fontSize: "50px" }}>Conversational Explortory Data Analysis</h2>
+            <p style={{ fontSize: "30px" }}>Upload a CSV file to start analysing your data!</p>
           </div>
         )}
         
