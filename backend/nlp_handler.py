@@ -1,6 +1,9 @@
 import json
 import re
 from difflib import SequenceMatcher
+import logging
+
+logger = logging.getLogger("backend.nlp_handler")
 
 AVG_KEYWORDS = ["average", "mean", "avg"]
 SUM_KEYWORDS = ["sum", "total", "add", "combined"]
@@ -183,11 +186,15 @@ def parse_query(query: str, columns: list[str], llm=None) -> dict | None:
     return None
 
 def llm_query_parser_fallback(query: str, columns: list[str], llm) -> dict | None:
+    """
+    Fallback method to parse the query using an LLM if the rule-based parsing fails. 
+    The LLM is prompted to return a JSON with the proper structure.
+    """
     if not llm:
         return None
 
     prompt = (
-        "Return SINGLE LINE JSON only.\n"
+        "You are a JSON API. Return ONLY valid JSON, nothing else.\n"
         f"Columns: {', '.join(columns)}\n"
         'Schema: {"operation":"avg|sum|max|min|count|list","column":"<column name or null>"}\n'
         'Example 1: {"operation":"avg","column":"Age"}\n'
@@ -195,21 +202,70 @@ def llm_query_parser_fallback(query: str, columns: list[str], llm) -> dict | Non
         f"User: {query}\n"
     )
 
-    resp = llm(prompt, max_tokens=64, temperature=0.0, top_p=1.0)
-    text = resp["choices"][0].get("text", "").strip()
-
-    m = re.search(r"\{[^{}]*\}", text)
-    if not m:
+    # Validate LLM response structure
+    try:
+        resp = llm(prompt, max_tokens=200, temperature=0.0, top_p=1.0)
+    except Exception as e:
+        logger.warning(f"LLM call failed: {e}")
+        return None
+    
+    # Check response structure
+    if not resp or not isinstance(resp, dict):
+        logger.warning("LLM response is not a dict")
+        return None
+    
+    if "choices" not in resp or not resp["choices"]:
+        logger.warning("LLM response missing 'choices' or choices is empty")
+        return None
+    
+    # Extract text from response
+    first_choice = resp["choices"][0]
+    if not isinstance(first_choice, dict):
+        logger.warning("Choice is not a dict")
         return None
 
-    parsed = json.loads(m.group())
+    text = (
+        first_choice.get("text", "") or 
+        first_choice.get("message", {}).get("content", "")
+    ).strip()
+
+    if not text:
+        logger.warning("LLM response has no text content")
+        return None
+
+    # Extract JSON from text
+    m = re.search(r"\{[^{}]*\}", text)
+    if not m:
+        logger.warning(f"No JSON found in LLM response: {text[:100]}")
+        return None
+        
+    # Parse JSON
+    try:
+        parsed = json.loads(m.group())
+    except json.JSONDecodeError as e:
+        logger.warning(f"Failed to parse JSON from LLM response: {e}")
+        return None
+
+    # Validate parsed object structure
+    if not isinstance(parsed, dict):
+        logger.warning("Parsed JSON is not a dict")
+        return None
+    
     operation = parsed.get("operation")
     col = parsed.get("column")
 
-    if operation not in {"avg", "sum", "max", "min", "list", "count"}:
+    # Validate operation
+    valid_operations = {"avg", "sum", "max", "min", "list", "count"}
+    if operation not in valid_operations:
+        logger.warning(f"Invalid operation: {operation}")
         return None
 
-    if operation in {"avg","sum","max","min","list"} and col not in columns:
-        return None
-
-    return {"operation": operation, "col": col, "chart": None, "raw": query}
+    # Validate column
+    if operation in {"avg", "sum", "max", "min", "list"}:
+        if not col or col not in columns:
+            logger.warning(f"Invalid or missing column '{col}' for operation '{operation}'")
+            return None
+        
+    reworked_prompt = {"operation": operation, "col": col, "chart": None, "raw": query}
+    logger.info(f"LLM query parser fallback returned: {reworked_prompt}")
+    return reworked_prompt

@@ -278,6 +278,7 @@ class ChartGenerator:
                     pass
             fig.update_layout(showlegend=False)
 
+        # For other chart types, apply a single colour or palette
         elif kind == "histogram":
             fig.update_traces(marker_color=px.colors.qualitative.Set2[0])
 
