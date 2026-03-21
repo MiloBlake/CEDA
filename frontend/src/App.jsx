@@ -33,13 +33,11 @@ function App() {
             textAlign: "center"
           }}>
             <div style={{marginBottom: "20px" }}></div>
-            <img src="/logo.png" alt="Logo" className="uploader-logo" />
-            <h2 style={{ fontSize: "50px" }}>Conversational Explortory Data Analysis</h2>
-            <p style={{ fontSize: "30px" }}>Upload a CSV file to start analysing your data!</p>
+            <img src="/logo.png" alt="Logo" />
+            <h2 style={{ fontSize: "50px" }}>Conversational Exploratory Data Analysis</h2>
+            {!dataset && <FileUploader onFileUploaded={handleFileUploaded} />}
           </div>
         )}
-        
-        {!dataset && <FileUploader onFileUploaded={handleFileUploaded} />}
       </div>
     </div>
   );
