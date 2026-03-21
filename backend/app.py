@@ -84,7 +84,7 @@ def upload():
         dataset["_row_id"] = dataset.index
 
         return jsonify({
-            "message": "File uploaded", 
+            "message": "File uploaded! \n\nTry: 'list columns', 'average [column]', 'bar chart of [column] vs [column]', 'analyze'",
             "columns": list(dataset.columns)
         })
     except Exception as e:
