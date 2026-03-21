@@ -32,13 +32,12 @@ function App() {
             color: "#666",
             textAlign: "center"
           }}>
-            <div style={{ fontSize: "48px", marginBottom: "20px" }}></div>
-            <h2>Welcome to Steffy</h2>
-            <p>Upload a CSV file to start analysing your data!</p>
+            <div style={{marginBottom: "20px" }}></div>
+            <img src="/logo.png" alt="Logo" />
+            <h2 style={{ fontSize: "50px" }}>Conversational Exploratory Data Analysis</h2>
+            {!dataset && <FileUploader onFileUploaded={handleFileUploaded} />}
           </div>
         )}
-        
-        {!dataset && <FileUploader onFileUploaded={handleFileUploaded} />}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ export default function Header() {
   return (
     <div
       style={{
-        backgroundColor: "#a80050",
+        backgroundColor: "#084872",
         color: "white",
         padding: "18px",
         display: "flex",
@@ -15,12 +15,12 @@ export default function Header() {
       <h1
         style={{
           margin: 0,
-          fontSize: "26px",
+          fontSize: "50px",
           fontWeight: "600",
           letterSpacing: "0.5px",
         }}
       >
-        Steffy
+        CEDA
       </h1>
     </div>
   );

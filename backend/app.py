@@ -184,6 +184,11 @@ def query():
             return jsonify({
                 "response": "There is no active selection to analyse. Select part of a chart first."
             })
+    elif q_clean.startswith(("list columns", "list column names", "show columns", "column names")):
+        # If the user is asking for columns, simply list them
+        # Filter out internal columns and format names (lowercase, no underscores)
+        visible_cols = [col.replace("_", " ").replace("-", " ").lower() for col in cols if not col.startswith("_")]
+        return jsonify({"response": f"Columns in your dataset: {', '.join(visible_cols)}"})
     else:
         # Otherwise, attempt to parse the query for operations / charts
         spec = parse_query(q, cols, llm=llm)
