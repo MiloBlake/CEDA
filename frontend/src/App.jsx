@@ -23,9 +23,7 @@ function App() {
         flexDirection: "column",
       }}>
         {dataset ? (
-          <ChatBox welcomeMessage={`File uploaded!
-
-Welcome to CEDA. Here's what you can do:
+          <ChatBox welcomeMessage={`Welcome to CEDA. Here's what you can do:
 
 Perform calculations: average, sum, min, max, count
 Generate visualisations: bar, scatter, line, pie, histogram, box plot
@@ -35,7 +33,7 @@ Examples:
 • 'list columns' - See all available data columns
 • 'average [column]' - Calculate average of a column
 • 'bar chart of [column] vs [column]' - Create visualisations
-• 'analyse' - Get LLM analysis of your selection`} />
+• 'analyse' - Get LLM analysis of a selected portion of visualisations`} />
         ) : (
           <div style={{
             display: "flex",

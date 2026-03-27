@@ -7,6 +7,7 @@ export default function ChatBox({ welcomeMessage }) {
   const [input, setInput] = useState("");
   const [selectedRowIds, setSelectedRowIds] = useState([]); // Used for scatter chart interactions
   const [selectedCategory, setSelectedCategory] = useState(null); // Used for bar chart interactions -- { col: string, values: string[] } | null
+  const isLoading = messages.length > 0 && messages[messages.length - 1].bot === "__typing__";
 
   useEffect(() => {
     if (welcomeMessage) {
@@ -479,7 +480,7 @@ export default function ChatBox({ welcomeMessage }) {
           />
           <button
             onClick={send}
-            disabled={!input.trim()}
+            disabled={!input.trim() || isLoading}
             className="send-button"
           >
             ➤
