@@ -1,4 +1,5 @@
 .chatbox-container {
+  font-family: 'Inter', sans-serif;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -115,18 +116,19 @@
 
 .input-container {
   display: flex;
-  gap: 10px;
+  gap: 15px;
   align-items: center;
 }
 
 .message-input {
   flex: 1;
-  padding: 12px 16px;
+  padding: 16px 20px;
   border: none;
   border-radius: 25px;
-  font-size: 16px;
+  font-size: 25px;
   outline: none;
   background-color: #f8f9fa;
+  min-height: 50px;
 }
 
 .reset-filters-button{
@@ -151,22 +153,24 @@
 .send-button {
   border: none;
   border-radius: 50%;
-  width: 44px;
-  height: 44px;
+  width: 56px;
+  height: 56px;
   cursor: pointer;
-  font-size: 18px;
+  font-size: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
+  flex-shrink: 0;
 }
 
 .send-button:enabled {
-  background-color: #a80050;
+  background-color: #154f70;
+  transition: background-color 0.5s ease;
 }
 
 .send-button:disabled {
-  background-color: #ccc;
+  background-color: #82c0e4;
   cursor: not-allowed;
 }
 

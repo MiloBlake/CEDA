@@ -1,12 +1,19 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Plot from "react-plotly.js";
 import "./styles/ChatBox.css";
 
-export default function ChatBox() {
+export default function ChatBox({ welcomeMessage }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [selectedRowIds, setSelectedRowIds] = useState([]); // Used for scatter chart interactions
   const [selectedCategory, setSelectedCategory] = useState(null); // Used for bar chart interactions -- { col: string, values: string[] } | null
+  const isLoading = messages.length > 0 && messages[messages.length - 1].bot === "__typing__";
+
+  useEffect(() => {
+    if (welcomeMessage) {
+      setMessages([{ user: null, bot: welcomeMessage }]);
+    }
+  }, [welcomeMessage]);
 
   const send = async () => {
     if (!input.trim()) return;
@@ -473,7 +480,7 @@ export default function ChatBox() {
           />
           <button
             onClick={send}
-            disabled={!input.trim()}
+            disabled={!input.trim() || isLoading}
             className="send-button"
           >
             ➤

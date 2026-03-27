@@ -5,9 +5,11 @@ import Header from "./components/Header";
 
 function App() {
   const [dataset, setDataset] = useState(null);
+  const [welcomeMessage, setWelcomeMessage] = useState(null);
 
   const handleFileUploaded = (data) => {
     setDataset(data);
+    setWelcomeMessage(data.message);
   };
 
   return (
@@ -21,7 +23,17 @@ function App() {
         flexDirection: "column",
       }}>
         {dataset ? (
-          <ChatBox />
+          <ChatBox welcomeMessage={`Welcome to CEDA. Here's what you can do:
+
+Perform calculations: average, sum, min, max, count
+Generate visualisations: bar, scatter, line, pie, histogram, box plot
+Selection Analysis: Select part of a chart, then type 'analyse' to get AI insights!
+
+Examples:
+• 'list columns' - See all available data columns
+• 'average [column]' - Calculate average of a column
+• 'bar chart of [column] vs [column]' - Create visualisations
+• 'analyse' - Get LLM analysis of a selected portion of visualisations`} />
         ) : (
           <div style={{
             display: "flex",
