@@ -216,8 +216,8 @@ def query():
     if operation == "chart":
         chart_spec = spec.get("chart", {})
 
-        if not chart_spec:
-            return jsonify({"response": "I can create charts, but I need more specific information."})
+        if not chart_spec or not chart_spec.get("type"):
+            return jsonify({"response": "Please specify chart type"})
                 
         try:
             logger.info(f"Generating chart with spec: {chart_spec}")
