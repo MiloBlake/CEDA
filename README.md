@@ -32,5 +32,7 @@ CEDA uses a client-server architecture:
 ## Author
 
 Milo Blake
+
 University of Galway
+
 Final Year Project
