@@ -191,6 +191,12 @@ def parse_query(query: str, columns: list[str], llm=None) -> dict | None:
         x_col = mentioned[0] if len(mentioned) >= 1 else None
         y_col = mentioned[1] if len(mentioned) >= 2 else None
 
+        if not x_col and chart_type not in {"histogram", "box", "pie"}:
+            if llm:
+                return llm_chart_parser_fallback(query, columns, llm)
+            else:
+                return None
+
         if chart_type in {"histogram", "box", "pie"}:
             y_col = None
     
@@ -221,6 +227,12 @@ def parse_query(query: str, columns: list[str], llm=None) -> dict | None:
         }
         return spec
     
+    if intent == "chart":
+        if llm:
+            return llm_chart_parser_fallback(query, columns, llm)
+        else:
+            return None
+
     if llm:
         return llm_query_parser_fallback(query, columns, llm)
     
@@ -310,3 +322,93 @@ def llm_query_parser_fallback(query: str, columns: list[str], llm) -> dict | Non
     reworked_prompt = {"operation": operation, "col": col, "chart": None, "raw": query}
     logger.info(f"LLM query parser fallback returned: {reworked_prompt}")
     return reworked_prompt
+
+def llm_chart_parser_fallback(query: str, columns: list[str], llm) -> dict | None:
+    """
+    Fallback for parsing chart queries using LLM.
+    Returns a chart spec as opposed to simple operations.
+    """
+    if not llm:
+        return None
+
+    prompt = (
+        "You are a JSON API. Return ONLY valid JSON, nothing else.\n"
+        f"Columns: {', '.join(columns)}\n"
+        'Schema: {"x_column":"<column name>","y_column":"<column name or null>","chart_type":"bar|scatter|line|pie|histogram|box"}\n'
+        'Examples:\n'
+        '{"x_column":"Age","y_column":"Salary","chart_type":"scatter"}\n'
+        '{"x_column":"Category","y_column":null,"chart_type":"histogram"}\n'
+        f"User query: {query}\n"
+    )
+
+    try:
+        resp = llm(prompt, max_tokens=200, temperature=0.0, top_p=1.0)
+    except Exception as e:
+        logger.warning(f"Chart LLM call failed: {e}")
+        return None
+    
+    if not resp or not isinstance(resp, dict):
+        logger.warning("Chart LLM response is not a dict")
+        return None
+    
+    if "choices" not in resp or not resp["choices"]:
+        logger.warning("Chart LLM response missing choices")
+        return None
+    
+    first_choice = resp["choices"][0]
+    text = (
+        first_choice.get("text", "") or 
+        first_choice.get("message", {}).get("content", "")
+    ).strip()
+
+    if not text:
+        logger.warning("Chart LLM response has no text")
+        return None
+
+    m = re.search(r"\{[^{}]*\}", text)
+    if not m:
+        logger.warning(f"No JSON in chart LLM response: {text[:100]}")
+        return None
+        
+    try:
+        parsed = json.loads(m.group())
+    except json.JSONDecodeError as e:
+        logger.warning(f"Failed to parse chart JSON: {e}")
+        return None
+
+    x_col = parsed.get("x_column")
+    y_col = parsed.get("y_column")
+    chart_type = parsed.get("chart_type")
+
+    # Validate
+    if not x_col or x_col not in columns:
+        logger.warning(f"Invalid x_column: {x_col}")
+        return None
+    if chart_type not in {"bar", "scatter", "line", "pie", "histogram", "box"}:
+        logger.warning(f"Invalid chart_type: {chart_type}")
+        return None
+
+    # Detect aggregation from query
+    q_normalized = normalise_text(query)
+    agg = "count"  # default
+    if any(w in q_normalized for w in ["average", "mean", "avg"]):
+        agg = "mean"
+    elif any(w in q_normalized for w in ["sum", "total"]):
+        agg = "sum"
+    elif any(w in q_normalized for w in ["count", "how many", "number of"]):
+        agg = "count"
+    
+    spec = {
+        "operation": "chart",
+        "col": None,
+        "chart": {
+            "type": chart_type,
+            "x": x_col,
+            "y": y_col,
+            "group": None,
+            "agg": agg
+        },
+        "raw": query
+    }
+    logger.info(f"Chart LLM fallback returned: {spec}")
+    return spec
