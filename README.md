@@ -2,11 +2,12 @@
 
 CEDA is a local, privacy-focused conversational data analysis tool that allows you to query your datasets using natural language. It combines a rule-based NLP parser with an LLM fallback to interpret queries and generate results and visualisations.
 
-![alt text](image.png)
+---
+![alt text](images/image.png)
 
-![alt text](image-1.png)
+![alt text](images/image-1.png)
 
-![alt text](image-6.png)
+![alt text](images/image-6.png)
 ---
 
 ## Features
