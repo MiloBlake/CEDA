@@ -19,6 +19,22 @@ CEDA is a local, privacy-focused conversational data analysis tool that allows y
 
 ---
 
+## Architecture
+
+CEDA uses a client-server architecture:
+
+* Frontend: React-based chatbot interface
+* Backend: Flask API for query processing
+* Components:
+
+  * NLP handler (rule-based)
+  * LLM fallback (llama.cpp)
+  * Data processing (Pandas)
+  * Visualisation (Plotly)
+
+---
+
+
 ## Quick Start
 
 ### Prerequisites
@@ -69,21 +85,6 @@ python start.py
 - **"npm is not installed"**: Install Node.js from [nodejs.org](https://nodejs.org)
 - **Port already in use**: Change ports in the configuration
 - **Python version error**: Make sure you have Python 3.8 or higher installed
-
----
-
-## Architecture
-
-CEDA uses a client-server architecture:
-
-* Frontend: React-based chatbot interface
-* Backend: Flask API for query processing
-* Components:
-
-  * NLP handler (rule-based)
-  * LLM fallback (llama.cpp)
-  * Data processing (Pandas)
-  * Visualisation (Plotly)
 
 ---
 
