@@ -1,0 +1,6 @@
+Flask==3.0.3
+flask_cors==4.0.0
+llama-cpp-python==0.2.50
+pandas==2.2.0
+chardet==5.2.0
+setuptools==70.0.0
